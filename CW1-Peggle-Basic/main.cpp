@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 // Window size
 constexpr int   WINDOW_W = 800;
@@ -20,11 +21,20 @@ constexpr float PLAY_RIGHT = WINDOW_W - BORDER_RIGHT;
 constexpr float PLAY_TOP = BORDER_TOP;
 constexpr float PLAY_BOTTOM = WINDOW_H - BORDER_BOTTOM;
 
-constexpr float BALL_RADIUS = 8.0f;
+constexpr float BALL_RADIUS = 5.0f;   // the ball is half the size of the peg
+constexpr float PEG_RADIUS = 10.0f;
+constexpr float PEG_BOUNCE = 0.85f;   // Peg bouncyness
+
+// Peg layout: 8 rows that alternate between 13 and 12 pegs
+constexpr int   PEG_ROWS = 8;
+constexpr int   PEG_COLS_LONG = 13;
+constexpr int   PEG_COLS_SHORT = 12;
+constexpr float PEG_SPACING = 40.0f; // distance between pegs
+constexpr float PEG_GRID_TOP = 210.0f;     // y of the first row
 constexpr float GRAVITY = 900.0f; // speed is pixels / second^2
 constexpr float SHOT_SPEED = 650.0f; // initial velocity
 constexpr float WALL_BOUNCE = 0.95f; // speed lost after a bounce
-constexpr float MAX_FRAME_DT = 0.05f;    // clamp huge frame times (e.g. when dragging the window)
+constexpr float MAX_FRAME_DT = 0.05f; // clamp huge frame times (e.g. when dragging the window)
 constexpr float PHYSICS_STEP = 1.0f / 240.0f; // fixed physics timestep
 
 // Launcher position
@@ -35,7 +45,7 @@ constexpr float LAUNCHER_Y = 70.0f;
 constexpr float MIN_AIM_ANGLE_DEG = -10.0f;
 
 // Shot guide
-constexpr float GUIDE_LENGTH = 0.4f * (PLAY_BOTTOM - PLAY_TOP); // fixed length of the guide, 4/10 of the play area height
+constexpr float GUIDE_LENGTH = 0.4f * (PLAY_BOTTOM - PLAY_TOP); // Length of the guide
 constexpr float GUIDE_DOT_SPACING = 20.0f;  // distance between dots along the path
 constexpr float GUIDE_START_OFFSET = 28.0f;  // gap between launcher and first dot
 constexpr float GUIDE_DOT_RADIUS = 4.0f;
@@ -50,9 +60,38 @@ struct Ball
     bool  active = false;
 };
 
+struct Peg
+{
+    float x = 0.0f, y = 0.0f;
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// Builds the grid of pegs
+static std::vector<Peg> CreatePegs()
+{
+    std::vector<Peg> pegs;
+
+    for (int row = 0; row < PEG_ROWS; ++row)
+    {
+        const int cols = (row % 2 == 0) ? PEG_COLS_LONG : PEG_COLS_SHORT;
+
+        // Start far enough left that the row ends up centred
+        const float startX = LAUNCHER_X - (cols - 1) * PEG_SPACING / 2.0f;
+
+        for (int col = 0; col < cols; ++col)
+        {
+            Peg p;
+            p.x = startX + col * PEG_SPACING;
+            p.y = PEG_GRID_TOP + row * PEG_SPACING;
+            pegs.push_back(p);
+        }
+    }
+    return pegs;
+}
+
 static void DrawFilledCircle(SDL_Renderer* r, float cx, float cy, float radius)
 {
     // SDL3 has no circle primitive, so draw one horizontal line per row.
@@ -64,10 +103,7 @@ static void DrawFilledCircle(SDL_Renderer* r, float cx, float cy, float radius)
     }
 }
 
-// Works out which way to fire so the ball's curved path goes through the mouse.
-// The shot speed and gravity are fixed, so we solve for the launch angle that
-// lands the ball on the mouse position (the flatter of the two possible arcs).
-// If the mouse is too far away to reach, we just point straight at it instead.
+// Works out which way to fire so the ball's curved path goes through the mouse
 static void GetAimDirection(float mouseX, float mouseY, float& dirX, float& dirY)
 {
     const float dx = mouseX - LAUNCHER_X;
@@ -79,10 +115,10 @@ static void GetAimDirection(float mouseX, float mouseY, float& dirX, float& dirY
     const float side = (dx >= 0.0f) ? 1.0f : -1.0f;
     const float adx = std::fabs(dx);
 
-    float angle;   // angle below horizontal, +90deg = straight down
+    float angle;
     if (adx < 1.0f)
     {
-        angle = SDL_PI_F / 2.0f;   // mouse is directly below, shoot straight down
+        angle = SDL_PI_F / 2.0f;
     }
     else
     {
@@ -148,8 +184,8 @@ static void DrawAimGuide(SDL_Renderer* r, float dirX, float dirY)
     if (!leftScreen)
     {
         const float len = std::sqrt(vx * vx + vy * vy);
-        const float tx = vx / len, ty = vy / len;   // tangent
-        const float nx = -ty, ny = tx;         // normal
+        const float tx = vx / len, ty = vy / len; // tangent
+        const float nx = -ty, ny = tx; // normal
         const float size = 11.0f;
         const SDL_FColor col = { 0.47f, 0.9f, 0.92f, 0.5f };
 
@@ -173,7 +209,7 @@ static void FireBall(Ball& ball, float dirX, float dirY)
     ball.active = true;
 }
 
-static void UpdateBall(Ball& ball, float dt)
+static void UpdateBall(Ball& ball, const std::vector<Peg>& pegs, float dt)
 {
     if (!ball.active) return;
 
@@ -200,6 +236,36 @@ static void UpdateBall(Ball& ball, float dt)
     {
         ball.y = PLAY_TOP + BALL_RADIUS;
         ball.vy = std::fabs(ball.vy) * WALL_BOUNCE;
+    }
+
+    // Collisions for the peg, when all overlaps the peg it bounces off
+    for (const Peg& peg : pegs)
+    {
+        const float dx = ball.x - peg.x;
+        const float dy = ball.y - peg.y;
+        const float minDist = BALL_RADIUS + PEG_RADIUS;
+        const float distSq = dx * dx + dy * dy;
+        if (distSq >= minDist * minDist) continue;
+
+        // Normal points from the peg centre to the ball centre
+        const float dist = std::sqrt(distSq);
+        float nx = 0.0f, ny = -1.0f;
+        if (dist > 0.0001f)
+        {
+            nx = dx / dist;
+            ny = dy / dist;
+        }
+
+        ball.x = peg.x + nx * minDist;
+        ball.y = peg.y + ny * minDist;
+
+        // Only bounce if the ball is moving into the peg
+        const float vn = ball.vx * nx + ball.vy * ny;
+        if (vn < 0.0f)
+        {
+            ball.vx -= (1.0f + PEG_BOUNCE) * vn * nx;
+            ball.vy -= (1.0f + PEG_BOUNCE) * vn * ny;
+        }
     }
 
     // Off the bottom of the play area: delete the shot
@@ -234,6 +300,7 @@ int main(int argc, char* argv[])
     SDL_SetRenderVSync(renderer, 1);
 
     Ball  ball;
+    std::vector<Peg> pegs = CreatePegs();
     float mouseX = LAUNCHER_X;
     float mouseY = WINDOW_H;
 
@@ -285,7 +352,7 @@ int main(int argc, char* argv[])
         accumulator += frameDt;
         while (accumulator >= PHYSICS_STEP)
         {
-            UpdateBall(ball, PHYSICS_STEP);
+            UpdateBall(ball, pegs, PHYSICS_STEP);
             accumulator -= PHYSICS_STEP;
         }
 
@@ -293,11 +360,16 @@ int main(int argc, char* argv[])
         SDL_SetRenderDrawColor(renderer, 20, 24, 40, 255);
         SDL_RenderClear(renderer);
 
+        // Blue pegs (will add other colours later)
+        SDL_SetRenderDrawColor(renderer, 50, 110, 220, 255);
+        for (const Peg& peg : pegs)
+            DrawFilledCircle(renderer, peg.x, peg.y, PEG_RADIUS);
+
         // Launcher
         SDL_SetRenderDrawColor(renderer, 200, 200, 210, 255);
         DrawFilledCircle(renderer, LAUNCHER_X, LAUNCHER_Y, 14.0f);
 
-        // Aim guide shows when no ball is in play
+        // when no ball is in play, aim guide shows
         if (!ball.active)
         {
             float dirX, dirY;
