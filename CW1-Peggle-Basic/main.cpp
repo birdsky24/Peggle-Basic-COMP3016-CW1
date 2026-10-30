@@ -31,11 +31,11 @@ constexpr float PHYSICS_STEP = 1.0f / 240.0f; // fixed physics timestep
 constexpr float LAUNCHER_X = (PLAY_LEFT + PLAY_RIGHT) / 2.0f;
 constexpr float LAUNCHER_Y = 70.0f;
 
-// The max angle you can shoot at
+// The max angle you can shoot at (negative = slightly above horizontal)
 constexpr float MIN_AIM_ANGLE_DEG = -10.0f;
 
 // Shot guide
-constexpr float GUIDE_LENGTH = 320.0f; // how far along the path the guide extends (pixels)
+constexpr float GUIDE_LENGTH = 0.4f * (PLAY_BOTTOM - PLAY_TOP); // fixed length of the guide, 4/10 of the play area height
 constexpr float GUIDE_DOT_SPACING = 20.0f;  // distance between dots along the path
 constexpr float GUIDE_START_OFFSET = 28.0f;  // gap between launcher and first dot
 constexpr float GUIDE_DOT_RADIUS = 4.0f;
@@ -64,28 +64,46 @@ static void DrawFilledCircle(SDL_Renderer* r, float cx, float cy, float radius)
     }
 }
 
-// Returns a unit vector pointing from the launcher towards the mouse,
-// clamped to the aim limit
+// Works out which way to fire so the ball's curved path goes through the mouse.
+// The shot speed and gravity are fixed, so we solve for the launch angle that
+// lands the ball on the mouse position (the flatter of the two possible arcs).
+// If the mouse is too far away to reach, we just point straight at it instead.
 static void GetAimDirection(float mouseX, float mouseY, float& dirX, float& dirY)
 {
-    float dx = mouseX - LAUNCHER_X;
-    float dy = mouseY - LAUNCHER_Y;
+    const float dx = mouseX - LAUNCHER_X;
+    const float dy = mouseY - LAUNCHER_Y;   // +y is down on screen
 
     const float minAngle = MIN_AIM_ANGLE_DEG * SDL_PI_F / 180.0f;
-    float angle = std::atan2(dy, dx);          // 0 = right, +90deg = straight down
 
-    // atan2 returns (-PI, PI]. Shift the up-left quadrant to the 180deg+ side so
-    // "up" targets clamp to the nearest limit (right limit for up-right, left for up-left).
-    if (angle < -SDL_PI_F / 2.0f) angle += 2.0f * SDL_PI_F;
+    // Solve for the right hand side only, then flip x if the mouse is on the left
+    const float side = (dx >= 0.0f) ? 1.0f : -1.0f;
+    const float adx = std::fabs(dx);
 
-    // Valid range is [minAngle, PI - minAngle]
-    angle = std::max(minAngle, std::min(angle, SDL_PI_F - minAngle));
+    float angle;   // angle below horizontal, +90deg = straight down
+    if (adx < 1.0f)
+    {
+        angle = SDL_PI_F / 2.0f;   // mouse is directly below, shoot straight down
+    }
+    else
+    {
+        // Path is: dy = adx*tan(a) + g*adx^2 / (2*v^2*cos^2(a)), a quadratic in tan(a)
+        const float a = GRAVITY * adx * adx / (2.0f * SHOT_SPEED * SHOT_SPEED);
+        const float disc = adx * adx - 4.0f * a * (a - dy);
 
-    dirX = std::cos(angle);
+        if (disc >= 0.0f)
+            angle = std::atan((-adx + std::sqrt(disc)) / (2.0f * a));
+        else
+            angle = std::atan2(dy, adx);   // out of range, just aim at the mouse
+    }
+
+    // Don't let the player aim past the limit
+    angle = std::max(angle, minAngle);
+
+    dirX = side * std::cos(angle);
     dirY = std::sin(angle);
 }
 
-// Draws a dotted line on the shot's path
+// Draws a dotted line on the shot's path, it's a fixed length
 static void DrawAimGuide(SDL_Renderer* r, float dirX, float dirY)
 {
     float x = LAUNCHER_X;
