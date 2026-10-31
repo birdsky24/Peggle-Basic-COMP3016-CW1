@@ -139,7 +139,8 @@ static void FireBall(Ball& ball, float dirX, float dirY)
     ball.active = true;
 }
 
-static void UpdateBall(Ball& ball, const std::vector<Peg>& pegs, float dt)
+// hitOrder holds the index of every peg hit by this shot, in the order they were hit
+static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hitOrder, float dt)
 {
     if (!ball.active) return;
 
@@ -169,13 +170,23 @@ static void UpdateBall(Ball& ball, const std::vector<Peg>& pegs, float dt)
     }
 
     // If the ball overlaps with a peg it is pushed back
-    for (const Peg& peg : pegs)
+    for (int i = 0; i < static_cast<int>(pegs.size()); ++i)
     {
+        Peg& peg = pegs[i];
+        if (peg.removed) continue;
+
         const float dx = ball.x - peg.x;
         const float dy = ball.y - peg.y;
         const float minDist = BALL_RADIUS + PEG_RADIUS;
         const float distSq = dx * dx + dy * dy;
         if (distSq >= minDist * minDist) continue;
+
+        // Mark the peg for deletion, only the first hit counts so it can't be added twice
+        if (!peg.hit)
+        {
+            peg.hit = true;
+            hitOrder.push_back(i);
+        }
 
         // Normal points from the peg centre to the ball centre
         const float dist = std::sqrt(distSq);
@@ -231,6 +242,8 @@ int main(int argc, char* argv[])
 
     Ball  ball;
     std::vector<Peg> pegs = BuildLevel(1);
+    std::vector<int> hitOrder; // pegs hit by the current shot, waiting to be deleted in order
+    float removeTimer = 0.0f;
     float mouseX = LAUNCHER_X;
     float mouseY = WINDOW_H;
 
@@ -260,7 +273,7 @@ int main(int argc, char* argv[])
                 break;
 
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
-                if (e.button.button == SDL_BUTTON_LEFT && !ball.active)
+                if (e.button.button == SDL_BUTTON_LEFT && !ball.active && hitOrder.empty())
                 {
                     mouseX = e.button.x;
                     mouseY = e.button.y;
@@ -282,25 +295,45 @@ int main(int argc, char* argv[])
         accumulator += frameDt;
         while (accumulator >= PHYSICS_STEP)
         {
-            UpdateBall(ball, pegs, PHYSICS_STEP);
+            UpdateBall(ball, pegs, hitOrder, PHYSICS_STEP);
             accumulator -= PHYSICS_STEP;
+        }
+
+        // Once the shot is gone, delete the hit pegs one by one in the order they were hit
+        if (!ball.active && !hitOrder.empty())
+        {
+            removeTimer += frameDt;
+            while (removeTimer >= PEG_REMOVE_DELAY && !hitOrder.empty())
+            {
+                pegs[hitOrder.front()].removed = true;
+                hitOrder.erase(hitOrder.begin());
+                removeTimer -= PEG_REMOVE_DELAY;
+            }
+        }
+        else
+        {
+            removeTimer = 0.0f;
         }
 
         // ---- Render ----
         SDL_SetRenderDrawColor(renderer, 20, 24, 40, 255);
         SDL_RenderClear(renderer);
 
-        // Pegs (all blue for now, colours come later)
-        SDL_SetRenderDrawColor(renderer, 50, 110, 220, 255);
+        // Pegs (all blue for now, colours come later). Hit pegs are drawn lighter.
         for (const Peg& peg : pegs)
+        {
+            if (peg.removed) continue;
+            if (peg.hit) SDL_SetRenderDrawColor(renderer, 150, 200, 255, 255);
+            else SDL_SetRenderDrawColor(renderer, 50, 110, 220, 255);
             DrawFilledCircle(renderer, peg.x, peg.y, PEG_RADIUS);
+        }
 
         // Launcher
         SDL_SetRenderDrawColor(renderer, 200, 200, 210, 255);
         DrawFilledCircle(renderer, LAUNCHER_X, LAUNCHER_Y, 14.0f);
 
-        // Aim guide only shows when no ball is in play
-        if (!ball.active)
+        // Aim guide only shows when no ball is in play and the hit pegs are deleted
+        if (!ball.active && hitOrder.empty())
         {
             float dirX, dirY;
             GetAimDirection(mouseX, mouseY, dirX, dirY);
