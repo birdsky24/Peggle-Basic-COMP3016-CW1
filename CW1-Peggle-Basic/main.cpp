@@ -244,6 +244,7 @@ int main(int argc, char* argv[])
     std::vector<Peg> pegs = BuildLevel(1);
     std::vector<int> hitOrder; // pegs hit by the current shot, waiting to be deleted in order
     float removeTimer = 0.0f;
+    bool  shotInProgress = false; // true from firing until the hit pegs are deleted
     float mouseX = LAUNCHER_X;
     float mouseY = WINDOW_H;
 
@@ -280,6 +281,7 @@ int main(int argc, char* argv[])
                     float dirX, dirY;
                     GetAimDirection(mouseX, mouseY, dirX, dirY);
                     FireBall(ball, dirX, dirY);
+                    shotInProgress = true;
                 }
                 break;
             }
@@ -315,16 +317,33 @@ int main(int argc, char* argv[])
             removeTimer = 0.0f;
         }
 
+        // Shot is finished and the hit pegs are gone, so the purple peg moves
+        if (shotInProgress && !ball.active && hitOrder.empty())
+        {
+            MovePurplePeg(pegs);
+            shotInProgress = false;
+        }
+
         // ---- Render ----
         SDL_SetRenderDrawColor(renderer, 20, 24, 40, 255);
         SDL_RenderClear(renderer);
 
-        // Pegs (all blue for now, colours come later). Hit pegs are drawn lighter.
+        // Pegs, hit pegs are drawn lighter
         for (const Peg& peg : pegs)
         {
             if (peg.removed) continue;
-            if (peg.hit) SDL_SetRenderDrawColor(renderer, 150, 200, 255, 255);
-            else SDL_SetRenderDrawColor(renderer, 50, 110, 220, 255);
+
+            Uint8 r = 50, g = 110, b = 220; // blue
+            if (peg.type == PegType::Orange) { r = 240; g = 130; b = 40; }
+            else if (peg.type == PegType::Purple) { r = 190; g = 60; b = 200; }
+
+            if (peg.hit)
+            {
+                r = static_cast<Uint8>((r + 255) / 2);
+                g = static_cast<Uint8>((g + 255) / 2);
+                b = static_cast<Uint8>((b + 255) / 2);
+            }
+            SDL_SetRenderDrawColor(renderer, r, g, b, 255);
             DrawFilledCircle(renderer, peg.x, peg.y, PEG_RADIUS);
         }
 

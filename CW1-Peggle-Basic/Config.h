@@ -22,6 +22,7 @@ constexpr float PLAY_BOTTOM = WINDOW_H - BORDER_BOTTOM;
 constexpr float BALL_RADIUS = 5.0f;
 constexpr float PEG_RADIUS = 10.0f;
 constexpr float PEG_BOUNCE = 0.85f;   // how bouncy the pegs are, 1.0 = no energy lost
+constexpr int   ORANGE_PEG_COUNT = 25; // orange pegs per level, every level also gets 1 purple peg and the rest are blue
 constexpr float PEG_REMOVE_DELAY = 0.1f; // seconds between each hit peg being deleted after the shot is gone
 
 // Physics
