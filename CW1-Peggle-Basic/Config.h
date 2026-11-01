@@ -78,3 +78,7 @@ constexpr float POPUP_TIME = 3.0f; // seconds
 // Fever meter in the right border
 constexpr int   METER_SEGMENT_HEIGHT = 16;
 constexpr int   METER_SEGMENT_GAP = 3;
+
+// Leaderboard
+constexpr const char* LEADERBOARD_FILE = "leaderboard.txt"; // saved next to where the game is run from
+constexpr int   LEADERBOARD_ROWS = 8; // scores shown on the main menu

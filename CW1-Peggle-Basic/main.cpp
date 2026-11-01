@@ -8,6 +8,7 @@
 
 #include "Config.h"
 #include "Level.h"
+#include "Leaderboard.h"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -62,6 +63,35 @@ struct Popup
     float timer = 0.0f;
 };
 
+enum class Screen
+{
+    MainMenu,
+    Playing,
+    Fail,
+    LevelClear
+};
+
+enum class Action
+{
+    None, // a greyed out button
+    Play,
+    OpenLevelSelect,
+    CloseLevelSelect,
+    GoToLevel,
+    Restart,
+    MainMenu,
+    NextLevel,
+    SaveScore
+};
+
+struct Button
+{
+    SDL_FRect rect;
+    std::string label;
+    Action action;
+    int level; // only used by GoToLevel
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -97,6 +127,134 @@ static void DrawText(SDL_Renderer* r, const std::string& text, float x, float y,
     SDL_SetRenderScale(r, scale, scale);
     SDL_RenderDebugText(r, x / scale, y / scale, text.c_str());
     SDL_SetRenderScale(r, 1.0f, 1.0f);
+}
+
+static bool PointInRect(float x, float y, const SDL_FRect& r)
+{
+    return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+}
+
+// Darkens everything drawn so far, used behind pop-ups
+static void DrawDim(SDL_Renderer* r, Uint8 alpha)
+{
+    const SDL_FRect all = { 0.0f, 0.0f, static_cast<float>(WINDOW_W), static_cast<float>(WINDOW_H) };
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(r, 0, 0, 0, alpha);
+    SDL_RenderFillRect(r, &all);
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
+}
+
+static void DrawPanel(SDL_Renderer* r, const SDL_FRect& panel)
+{
+    SDL_SetRenderDrawColor(r, 20, 24, 40, 255);
+    SDL_RenderFillRect(r, &panel);
+    SDL_SetRenderDrawColor(r, 200, 200, 210, 255);
+    SDL_RenderRect(r, &panel);
+}
+
+static void DrawButtons(SDL_Renderer* r, const std::vector<Button>& buttons, float mouseX, float mouseY)
+{
+    for (const Button& b : buttons)
+    {
+        const bool enabled = (b.action != Action::None);
+        const bool hover = enabled && PointInRect(mouseX, mouseY, b.rect);
+
+        if (!enabled) SDL_SetRenderDrawColor(r, 35, 38, 50, 255);
+        else if (hover) SDL_SetRenderDrawColor(r, 80, 110, 170, 255);
+        else SDL_SetRenderDrawColor(r, 45, 60, 100, 255);
+        SDL_RenderFillRect(r, &b.rect);
+
+        if (enabled) SDL_SetRenderDrawColor(r, 200, 200, 210, 255);
+        else SDL_SetRenderDrawColor(r, 80, 80, 90, 255);
+        SDL_RenderRect(r, &b.rect);
+
+        // Text is centred, the small square level buttons get bigger text
+        const float scale = (b.rect.w < 100.0f) ? 3.0f : 2.0f;
+        if (enabled) SDL_SetRenderDrawColor(r, 255, 255, 255, 255);
+        else SDL_SetRenderDrawColor(r, 110, 110, 120, 255);
+        DrawText(r, b.label,
+                 b.rect.x + (b.rect.w - TextWidth(b.label, scale)) / 2.0f,
+                 b.rect.y + (b.rect.h - 8.0f * scale) / 2.0f, scale);
+    }
+}
+
+// The level selector pop-up, a grid of numbers (5 per row) and a close button
+constexpr int LEVELS_PER_ROW = 5;
+
+static SDL_FRect LevelSelectPanel(int levelCount)
+{
+    const int rows = (levelCount + LEVELS_PER_ROW - 1) / LEVELS_PER_ROW;
+    return { LAUNCHER_X - 220.0f, 120.0f, 440.0f, 140.0f + rows * 72.0f };
+}
+
+static std::vector<Button> GetLevelSelectButtons(int levelCount)
+{
+    std::vector<Button> buttons;
+    const SDL_FRect panel = LevelSelectPanel(levelCount);
+    const float size = 60.0f;
+    const float step = 72.0f;
+    const int rows = (levelCount + LEVELS_PER_ROW - 1) / LEVELS_PER_ROW;
+
+    for (int i = 0; i < levelCount; ++i)
+    {
+        const int row = i / LEVELS_PER_ROW;
+        const int col = i % LEVELS_PER_ROW;
+        const int colsInRow = std::min(LEVELS_PER_ROW, levelCount - row * LEVELS_PER_ROW);
+        const float x = LAUNCHER_X - (colsInRow * step - (step - size)) / 2.0f + col * step;
+        const float y = panel.y + 70.0f + row * step;
+        buttons.push_back({ { x, y, size, size }, std::to_string(i + 1), Action::GoToLevel, i + 1 });
+    }
+
+    buttons.push_back({ { LAUNCHER_X - 80.0f, panel.y + 70.0f + rows * step + 10.0f, 160.0f, 40.0f }, "CLOSE", Action::CloseLevelSelect, 0 });
+    return buttons;
+}
+
+static void DrawLevelSelect(SDL_Renderer* r, int levelCount, float mouseX, float mouseY)
+{
+    DrawDim(r, 190);
+    DrawPanel(r, LevelSelectPanel(levelCount));
+
+    const std::string title = "SELECT LEVEL";
+    SDL_SetRenderDrawColor(r, 255, 220, 80, 255);
+    DrawText(r, title, LAUNCHER_X - TextWidth(title, 3.0f) / 2.0f, LevelSelectPanel(levelCount).y + 22.0f, 3.0f);
+    DrawButtons(r, GetLevelSelectButtons(levelCount), mouseX, mouseY);
+}
+
+// The buttons for each screen, used both to draw them and to click them
+static std::vector<Button> GetScreenButtons(Screen screen, int currentLevel, int levelCount, bool canSave, bool scoreSaved)
+{
+    std::vector<Button> buttons;
+
+    if (screen == Screen::MainMenu)
+    {
+        buttons.push_back({ { 60.0f, 170.0f, 240.0f, 50.0f }, "PLAY", Action::Play, 0 });
+        buttons.push_back({ { 60.0f, 240.0f, 240.0f, 50.0f }, "LEVEL SELECT", Action::OpenLevelSelect, 0 });
+    }
+    else if (screen == Screen::Fail)
+    {
+        const float x = LAUNCHER_X - 150.0f;
+        buttons.push_back({ { x, 250.0f, 300.0f, 44.0f }, "RESTART", Action::Restart, 0 });
+        buttons.push_back({ { x, 304.0f, 300.0f, 44.0f }, "MAIN MENU", Action::MainMenu, 0 });
+        buttons.push_back({ { x, 358.0f, 300.0f, 44.0f }, "LEVEL SELECT", Action::OpenLevelSelect, 0 });
+    }
+    else if (screen == Screen::LevelClear)
+    {
+        const float x = LAUNCHER_X - 150.0f;
+        float y = 250.0f;
+
+        // Greyed out until 3 letters are typed, and again once it is saved
+        buttons.push_back({ { x, y, 300.0f, 44.0f }, scoreSaved ? "SAVED" : "SAVE SCORE", (canSave && !scoreSaved) ? Action::SaveScore : Action::None, 0 });
+        y += 54.0f;
+        if (currentLevel < levelCount)
+        {
+            buttons.push_back({ { x, y, 300.0f, 44.0f }, "NEXT LEVEL", Action::NextLevel, 0 });
+            y += 54.0f;
+        }
+        buttons.push_back({ { x, y, 300.0f, 44.0f }, "MAIN MENU", Action::MainMenu, 0 });
+        y += 54.0f;
+        buttons.push_back({ { x, y, 300.0f, 44.0f }, "LEVEL SELECT", Action::OpenLevelSelect, 0 });
+    }
+    return buttons;
 }
 
 static int BasePegScore(PegType type)
@@ -503,13 +661,69 @@ int main(int argc, char* argv[])
     SDL_SetRenderVSync(renderer, 1);
 
     Ball  ball;
-    std::vector<Peg> pegs = BuildLevel(1);
+    std::vector<Peg> pegs;
     std::vector<int> hitOrder; // pegs hit by the current shot, waiting to be deleted in order
     float removeTimer = 0.0f;
     GameState game;
     Popup popup;
-    for (const Peg& peg : pegs)
-        if (peg.type == PegType::Orange) game.totalOrange++;
+
+    Screen screen = Screen::MainMenu;
+    int  currentLevel = 1;
+    bool levelSelectOpen = false;
+    std::string nameInput; // the 3 letters typed after clearing a level
+    bool scoreSaved = false;
+    std::vector<ScoreEntry> scores = LoadScores();
+
+    // Starts (or restarts) a level from scratch
+    auto startLevel = [&](int level)
+    {
+        currentLevel = level;
+        pegs = BuildLevel(level);
+        hitOrder.clear();
+        game = GameState();
+        for (const Peg& peg : pegs)
+            if (peg.type == PegType::Orange) game.totalOrange++;
+        popup = Popup();
+        ball = Ball();
+        removeTimer = 0.0f;
+        nameInput.clear();
+        scoreSaved = false;
+        levelSelectOpen = false;
+        screen = Screen::Playing;
+    };
+
+    auto goToMenu = [&]()
+    {
+        screen = Screen::MainMenu;
+        levelSelectOpen = false;
+        scores = LoadScores(); // read the file again so the leaderboard is up to date
+    };
+
+    auto saveScore = [&]()
+    {
+        if (nameInput.size() != 3 || scoreSaved) return;
+        ScoreEntry entry;
+        entry.level = currentLevel;
+        entry.name = nameInput;
+        entry.score = game.score;
+        if (SaveScore(entry)) scoreSaved = true;
+    };
+
+    auto doAction = [&](const Button& b)
+    {
+        switch (b.action)
+        {
+        case Action::Play: startLevel(1); break;
+        case Action::OpenLevelSelect: levelSelectOpen = true; break;
+        case Action::CloseLevelSelect: levelSelectOpen = false; break;
+        case Action::GoToLevel: startLevel(b.level); break;
+        case Action::Restart: startLevel(currentLevel); break;
+        case Action::MainMenu: goToMenu(); break;
+        case Action::NextLevel: startLevel(currentLevel + 1); break;
+        case Action::SaveScore: saveScore(); break;
+        default: break;
+        }
+    };
     float mouseX = LAUNCHER_X;
     float mouseY = WINDOW_H;
 
@@ -530,7 +744,20 @@ int main(int argc, char* argv[])
                 break;
 
             case SDL_EVENT_KEY_DOWN:
-                if (e.key.key == SDLK_ESCAPE) running = false;
+                if (e.key.key == SDLK_ESCAPE)
+                {
+                    running = false;
+                }
+                else if (screen == Screen::LevelClear && !scoreSaved && !levelSelectOpen)
+                {
+                    // Typing the 3 letter name
+                    if (e.key.key == SDLK_BACKSPACE && !nameInput.empty())
+                        nameInput.pop_back();
+                    else if (e.key.key >= SDLK_A && e.key.key <= SDLK_Z && nameInput.size() < 3 && !e.key.repeat)
+                        nameInput += static_cast<char>('A' + (e.key.key - SDLK_A));
+                    else if (e.key.key == SDLK_RETURN)
+                        saveScore();
+                }
                 break;
 
             case SDL_EVENT_MOUSE_MOTION:
@@ -539,19 +766,41 @@ int main(int argc, char* argv[])
                 break;
 
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
-                if (e.button.button == SDL_BUTTON_LEFT && !ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete)
+            {
+                if (e.button.button != SDL_BUTTON_LEFT) break;
+                mouseX = e.button.x;
+                mouseY = e.button.y;
+
+                if (screen == Screen::Playing)
                 {
-                    mouseX = e.button.x;
-                    mouseY = e.button.y;
-                    float dirX, dirY;
-                    GetAimDirection(mouseX, mouseY, dirX, dirY);
-                    FireBall(ball, dirX, dirY);
-                    game.shotInProgress = true;
-                    game.ballsLeft--;
-                    game.shot = ShotStats();
-                    game.shot.orangeAtStart = game.orangeHit;
+                    if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete)
+                    {
+                        float dirX, dirY;
+                        GetAimDirection(mouseX, mouseY, dirX, dirY);
+                        FireBall(ball, dirX, dirY);
+                        game.shotInProgress = true;
+                        game.ballsLeft--;
+                        game.shot = ShotStats();
+                        game.shot.orangeAtStart = game.orangeHit;
+                    }
+                }
+                else
+                {
+                    // Menus, the level selector pop-up blocks the buttons underneath it
+                    const std::vector<Button> buttons = levelSelectOpen
+                        ? GetLevelSelectButtons(LevelCount())
+                        : GetScreenButtons(screen, currentLevel, LevelCount(), nameInput.size() == 3, scoreSaved);
+                    for (const Button& b : buttons)
+                    {
+                        if (PointInRect(mouseX, mouseY, b.rect))
+                        {
+                            doAction(b);
+                            break;
+                        }
+                    }
                 }
                 break;
+            }
             }
         }
 
@@ -560,6 +809,49 @@ int main(int argc, char* argv[])
         float frameDt = static_cast<float>(now - lastTicks) / 1.0e9f;
         lastTicks = now;
         frameDt = std::min(frameDt, MAX_FRAME_DT);
+
+        // ---- Main menu ----
+        if (screen == Screen::MainMenu)
+        {
+            SDL_SetRenderDrawColor(renderer, 20, 24, 40, 255);
+            SDL_RenderClear(renderer);
+
+            const std::string title = "PEGGLE CLONE";
+            SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
+            DrawText(renderer, title, LAUNCHER_X - TextWidth(title, 4.0f) / 2.0f, 40.0f, 4.0f);
+
+            // Hover highlight is switched off while the level selector is open on top
+            const float hoverX = levelSelectOpen ? -1.0f : mouseX;
+            const float hoverY = levelSelectOpen ? -1.0f : mouseY;
+            DrawButtons(renderer, GetScreenButtons(screen, currentLevel, LevelCount(), false, false), hoverX, hoverY);
+
+            // Leaderboard, read from the file
+            SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
+            DrawText(renderer, "LEADERBOARD", 400.0f, 120.0f, 2.0f);
+            if (scores.empty())
+            {
+                SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
+                DrawText(renderer, "NO SCORES YET", 400.0f, 160.0f, 2.0f);
+            }
+            for (int i = 0; i < static_cast<int>(scores.size()) && i < LEADERBOARD_ROWS; ++i)
+            {
+                const float y = 160.0f + i * 26.0f;
+                const std::string scoreText = FormatNumber(scores[i].score);
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                DrawText(renderer, std::to_string(i + 1) + ".", 400.0f, y, 2.0f);
+                DrawText(renderer, scores[i].name, 440.0f, y, 2.0f);
+                SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
+                DrawText(renderer, "L" + std::to_string(scores[i].level), 520.0f, y, 2.0f);
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                DrawText(renderer, scoreText, 760.0f - TextWidth(scoreText, 2.0f), y, 2.0f);
+            }
+
+            if (levelSelectOpen)
+                DrawLevelSelect(renderer, LevelCount(), mouseX, mouseY);
+
+            SDL_RenderPresent(renderer);
+            continue;
+        }
 
         // ---- Update (fixed timestep) ----
         // Time slows down while the shot is in extreme fever
@@ -593,6 +885,13 @@ int main(int argc, char* argv[])
 
         if (popup.timer > 0.0f)
             popup.timer -= frameDt;
+
+        // Once the shot popup is gone, check if the level is cleared or out of shots
+        if (screen == Screen::Playing && !game.shotInProgress && !ball.active && hitOrder.empty() && popup.timer <= 0.0f)
+        {
+            if (game.levelComplete) screen = Screen::LevelClear;
+            else if (game.ballsLeft <= 0) screen = Screen::Fail;
+        }
 
         // ---- Render ----
         SDL_SetRenderDrawColor(renderer, 20, 24, 40, 255);
@@ -721,11 +1020,54 @@ int main(int argc, char* argv[])
             for (size_t i = 0; i < popup.lines.size(); ++i)
                 DrawText(renderer, popup.lines[i], LAUNCHER_X - TextWidth(popup.lines[i], scale) / 2.0f, box.y + 10.0f + i * lineH, scale);
         }
-        else if (game.levelComplete)
+
+        // Fail and level clear pop-ups, drawn over the level
+        if (screen == Screen::Fail || screen == Screen::LevelClear)
         {
-            const std::string msg = "LEVEL CLEARED";
-            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-            DrawText(renderer, msg, LAUNCHER_X - TextWidth(msg, 3.0f) / 2.0f, (PLAY_TOP + PLAY_BOTTOM) / 2.0f - 12.0f, 3.0f);
+            const bool hoverOn = !levelSelectOpen;
+            DrawDim(renderer, 170);
+            DrawPanel(renderer, { LAUNCHER_X - 210.0f, 100.0f, 420.0f, 380.0f });
+
+            const std::string scoreLine = "SCORE " + FormatNumber(game.score);
+            if (screen == Screen::Fail)
+            {
+                const std::string title = "FAIL";
+                SDL_SetRenderDrawColor(renderer, 230, 70, 60, 255);
+                DrawText(renderer, title, LAUNCHER_X - TextWidth(title, 5.0f) / 2.0f, 125.0f, 5.0f);
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                DrawText(renderer, scoreLine, LAUNCHER_X - TextWidth(scoreLine, 2.0f) / 2.0f, 190.0f, 2.0f);
+                const std::string note = "OUT OF SHOTS";
+                SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
+                DrawText(renderer, note, LAUNCHER_X - TextWidth(note, 2.0f) / 2.0f, 215.0f, 2.0f);
+            }
+            else
+            {
+                const std::string title = "LEVEL CLEARED";
+                SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
+                DrawText(renderer, title, LAUNCHER_X - TextWidth(title, 3.0f) / 2.0f, 118.0f, 3.0f);
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                DrawText(renderer, scoreLine, LAUNCHER_X - TextWidth(scoreLine, 2.0f) / 2.0f, 165.0f, 2.0f);
+
+                // Name entry
+                std::string nameLine;
+                if (scoreSaved) nameLine = "SAVED AS " + nameInput;
+                else nameLine = "NAME " + nameInput + (nameInput.size() < 3 ? "_" : "");
+                SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
+                DrawText(renderer, nameLine, LAUNCHER_X - TextWidth(nameLine, 2.0f) / 2.0f, 198.0f, 2.0f);
+                if (!scoreSaved)
+                {
+                    const std::string hint = "TYPE 3 LETTERS THEN SAVE";
+                    SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
+                    DrawText(renderer, hint, LAUNCHER_X - TextWidth(hint, 1.0f) / 2.0f, 224.0f, 1.0f);
+                }
+            }
+
+            DrawButtons(renderer,
+                        GetScreenButtons(screen, currentLevel, LevelCount(), nameInput.size() == 3, scoreSaved),
+                        hoverOn ? mouseX : -1.0f, hoverOn ? mouseY : -1.0f);
+
+            if (levelSelectOpen)
+                DrawLevelSelect(renderer, LevelCount(), mouseX, mouseY);
         }
 
         SDL_RenderPresent(renderer);
