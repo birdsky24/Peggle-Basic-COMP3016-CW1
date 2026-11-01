@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "Config.h"
+#include "Audio.h"
 #include "Level.h"
 #include "Leaderboard.h"
 
@@ -367,6 +368,7 @@ static void CheckFreeBalls(GameState& game)
     {
         shot.freeBallsEarned++;
         game.ballsLeft++;
+        PlaySfx(Sfx::FreeBall);
         shot.freeBallFlash = FREE_BALL_FLASH_TIME;
     }
 }
@@ -405,6 +407,7 @@ static void AddStyle(GameState& game, const char* name, int points, float x, flo
         if (other.isStyle && other.x == x && other.y == y) f.stack++;
     game.floaters.push_back(f);
 
+    PlaySfx(Sfx::StyleShot);
     CheckFreeBalls(game);
 }
 
@@ -797,6 +800,7 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
             shot.pegScoreSum += pegPoints;
             shot.pegsHit++;
             AddPegPopup(game, peg, pegPoints);
+            PlaySfx(Sfx::PegHit, std::min((shot.pegsHit - 1) * PEG_HIT_PITCH_STEP, PEG_HIT_PITCH_MAX));
             CheckFreeBalls(game);
 
             // Orange Attack, this orange peg filled a multiplier stage and the whole stage was hit in this shot
@@ -814,6 +818,7 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
             if (peg.type == PegType::Orange && game.orangeHit == game.totalOrange)
             {
                 game.feverActive = true;
+                PlaySfx(Sfx::Applause);
 
                 // Kick the bucket, the ball came straight off the bucket's edge into the last orange peg
                 if (shot.edgeSincePeg)
@@ -898,6 +903,7 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
             }
 
             game.ballsLeft++;
+            PlaySfx(Sfx::FreeBall);
             game.freeBall = true;
             return;
         }
@@ -1216,7 +1222,7 @@ int main(int argc, char* argv[])
     (void)argc;
     (void)argv;
 
-    if (!SDL_Init(SDL_INIT_VIDEO))
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
     {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return 1;
@@ -1231,6 +1237,7 @@ int main(int argc, char* argv[])
         return 1;
     }
     SDL_SetRenderVSync(renderer, 1);
+    AudioInit(); // if this fails the game just has no sound
 
     Ball  ball;
     std::vector<Peg> pegs;
@@ -1287,6 +1294,7 @@ int main(int argc, char* argv[])
 
     auto doAction = [&](const Button& b)
     {
+        if (b.action != Action::None) PlaySfx(Sfx::ButtonClick);
         switch (b.action)
         {
         case Action::Play: startLevel(1); break;
@@ -1367,6 +1375,7 @@ int main(int argc, char* argv[])
                         float dirX, dirY;
                         GetAimDirection(mouseX, mouseY, dirX, dirY);
                         FireBall(ball, dirX, dirY);
+                        PlaySfx(Sfx::Shoot);
                         game.shotInProgress = true;
                         game.ballsLeft--;
                         game.shot = ShotStats();
@@ -1401,6 +1410,12 @@ int main(int argc, char* argv[])
         frameDt = std::min(frameDt, MAX_FRAME_DT);
         if (screen == Screen::Paused) frameDt = 0.0f; // nothing moves while paused
         else if (fastForward && screen == Screen::Playing) frameDt *= GAME_SPEED_FAST;
+
+        // ---- Music ----
+        // Extreme fever has its own song, everywhere else (menus too) plays the background music
+        const bool inLevel = (screen == Screen::Playing || screen == Screen::Paused);
+        SetMusic((inLevel && game.feverActive) ? Music::Fever : Music::Background);
+        SetRouletteSpin(screen == Screen::Playing && game.roulette.active && !game.roulette.revealed);
 
         // ---- Main menu ----
         if (screen == Screen::MainMenu)
@@ -1463,7 +1478,17 @@ int main(int argc, char* argv[])
             if (!rl.revealed && rl.timer >= ROULETTE_SPIN_TIME)
             {
                 rl.revealed = true;
-                if (rl.returned) game.ballsLeft++;
+                SetRouletteSpin(false);
+                if (rl.returned)
+                {
+                    game.ballsLeft++;
+                    PlaySfx(Sfx::RouletteWin);
+                    PlaySfx(Sfx::FreeBall);
+                }
+                else
+                {
+                    PlaySfx(Sfx::RouletteLose);
+                }
             }
             if (rl.timer >= ROULETTE_TIME) rl.active = false;
         }
@@ -1490,6 +1515,7 @@ int main(int argc, char* argv[])
             while (removeTimer >= removeInterval && !hitOrder.empty())
             {
                 pegs[hitOrder.front()].removed = true;
+                PlaySfx(Sfx::PegRemove);
                 hitOrder.erase(hitOrder.begin());
                 removeTimer -= removeInterval;
             }
@@ -1708,6 +1734,7 @@ int main(int argc, char* argv[])
         SDL_RenderPresent(renderer);
     }
 
+    AudioShutdown();
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();

@@ -132,3 +132,26 @@ constexpr float BUCKET_RAMP_TIME = 0.6f; // how long it takes to slow down and s
 
 // Hold the right mouse button to speed the game up
 constexpr float GAME_SPEED_FAST = 3.0f;
+
+// Sounds. Every file is looked for in the folder the game is run from. These are placeholder names, change them to match
+// your mp3 files. A file that is missing is skipped (a message is written to the log), so they can be added one at a time.
+constexpr const char* SOUND_BUTTON_CLICK = "sounds/button_click.mp3"; // clicking a button in a menu
+constexpr const char* SOUND_PEG_HIT = "sounds/peg_hit.mp3";           // the ball hits a peg, higher each peg in the shot
+constexpr const char* SOUND_PEG_REMOVE = "sounds/peg_remove.mp3";     // a hit peg is deleted
+constexpr const char* SOUND_FREE_BALL = "sounds/free_ball.mp3";       // bucket, score threshold or winning the 50/50
+constexpr const char* SOUND_ROULETTE_SPIN = "sounds/roulette_spin.mp3"; // loops while the 50/50 numbers swing
+constexpr const char* SOUND_ROULETTE_LOSE = "sounds/roulette_lose.mp3";
+constexpr const char* SOUND_ROULETTE_WIN = "sounds/roulette_win.mp3";
+constexpr const char* SOUND_SHOOT = "sounds/shoot.mp3";               // the ball is fired
+constexpr const char* SOUND_APPLAUSE = "sounds/applause.mp3";         // the last orange peg is hit
+constexpr const char* SOUND_STYLE_SHOT = "sounds/style_shot.mp3";     // any style shot
+constexpr const char* MUSIC_BACKGROUND = "sounds/background_music.mp3"; // loops in the menus and while playing
+constexpr const char* MUSIC_FEVER = "sounds/extreme_fever.mp3";       // loops during extreme fever
+
+constexpr float SFX_VOLUME = 0.8f;   // 0.0 to 1.0
+constexpr float MUSIC_VOLUME = 0.5f;
+
+// Each different peg hit in a shot is this many semitones higher than the one before (12 = one octave), up to the max.
+// It starts again from normal pitch every shot.
+constexpr float PEG_HIT_PITCH_STEP = 1.0f;
+constexpr float PEG_HIT_PITCH_MAX = 24.0f;
