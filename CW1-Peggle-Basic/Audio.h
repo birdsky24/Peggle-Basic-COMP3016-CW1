@@ -21,6 +21,8 @@ enum class Sfx
     FreeBallScore2,
     FreeBallScore3,
     SlowMotion,
+    BucketBounce,   // the shot bounces off the edge of the moving bucket
+    FeverBucketBounce, // the shot bounces off one of the big circles around the extreme fever buckets
     Count
 };
 

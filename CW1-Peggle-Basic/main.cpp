@@ -573,6 +573,10 @@ static void BounceOffCircle(Ball& ball, float cx, float cy, float radius)
     const float vn = ball.vx * nx + ball.vy * ny;
     if (vn < 0.0f)
     {
+        // A real hit makes a sound, a ball resting on a circle doesn't
+        if (-vn >= BUCKET_BOUNCE_SOUND_MIN_SPEED)
+            PlaySfx(Sfx::FeverBucketBounce);
+
         ball.vx -= (1.0f + PEG_BOUNCE) * vn * nx;
         ball.vy -= (1.0f + PEG_BOUNCE) * vn * ny;
     }
@@ -701,6 +705,10 @@ static bool BounceOffTriangle(Ball& ball, const Triangle& tri)
     const float vn = ball.vx * nx + ball.vy * ny;
     if (vn < 0.0f)
     {
+        // A real hit makes a sound, a ball resting or sliding on the bucket doesn't
+        if (-vn >= BUCKET_BOUNCE_SOUND_MIN_SPEED)
+            PlaySfx(Sfx::BucketBounce);
+
         ball.vx -= (1.0f + PEG_BOUNCE) * vn * nx;
         ball.vy -= (1.0f + PEG_BOUNCE) * vn * ny;
     }

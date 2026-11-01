@@ -53,6 +53,8 @@ namespace
         case Sfx::FreeBallScore2: return SOUND_FREE_BALL_2;
         case Sfx::FreeBallScore3: return SOUND_FREE_BALL_3;
         case Sfx::SlowMotion:   return SOUND_SLOW_MOTION;
+        case Sfx::BucketBounce: return SOUND_BUCKET_BOUNCE;
+        case Sfx::FeverBucketBounce: return SOUND_FEVER_BUCKET_BOUNCE;
         default:                return "";
         }
     }
