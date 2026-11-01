@@ -75,6 +75,24 @@ constexpr float FEVER_SLOWMO = 0.3f; // 1.0 = normal speed
 
 // Popup shown at the end of each shot
 constexpr float POPUP_TIME = 1.5f; // seconds
+constexpr float POPUP_FADE_TIME = 0.3f; // it fades out over the last bit of POPUP_TIME
+
+// Small pop-ups that appear next to a peg in the play area
+constexpr float PEG_POPUP_TIME = 0.1f; // seconds the points for a peg stay on screen
+constexpr float PEG_POPUP_SCALE = 2.0f;
+constexpr float STYLE_POPUP_TIME = 1.0f; // seconds a style shot pop-up stays on screen
+constexpr float STYLE_POPUP_SCALE = 2.0f;
+
+// Free balls for a high scoring shot. Each score is the shot's own score, so it starts again from 0 every shot.
+constexpr int   FREE_BALL_THRESHOLD_COUNT = 3;
+constexpr int   FREE_BALL_THRESHOLDS[FREE_BALL_THRESHOLD_COUNT] = { 25000, 75000, 125000 };
+constexpr float FREE_BALL_FLASH_TIME = 0.6f; // how long a full bar and lit circle stay up before the next bar starts
+
+// Ball stack and free ball bars in the left border
+constexpr float STACK_BALL_RADIUS = 8.0f;
+constexpr float STACK_BALL_PITCH = 20.0f; // gap between the balls, squashes together if there are too many
+constexpr float FREE_BALL_BAR_WIDTH = 8.0f;
+constexpr float FREE_BALL_CIRCLE_RADIUS = 21.0f;
 
 // Fever meter in the right border
 constexpr int   METER_SEGMENT_HEIGHT = 16;

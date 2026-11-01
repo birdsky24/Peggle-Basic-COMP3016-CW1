@@ -26,6 +26,18 @@ struct StyleAward
     int points;
 };
 
+// A short lived piece of text drawn in the play area next to a peg
+struct FloatingText
+{
+    std::string text;  // peg points, or the style shot name
+    std::string text2; // second line (the style points), empty for peg points
+    float x = 0.0f, y = 0.0f; // the peg that was hit
+    float timer = 0.0f;
+    SDL_Color colour = { 255, 255, 255, 255 };
+    bool isStyle = false;
+    int stack = 0; // style shots from the same hit are stacked above each other
+};
+
 // Everything tracked for the shot that is currently in play
 struct ShotStats
 {
@@ -40,6 +52,8 @@ struct ShotStats
     bool bouncedOffWall = false; // bounced off a side wall since the last peg
     float distSinceWall = 0.0f; // how far the ball has travelled since that bounce
     int consecutiveLong = 0; // long shots in a row
+    int freeBallsEarned = 0; // free balls given so far this shot for reaching the score thresholds
+    float freeBallFlash = 0.0f; // counts down after a threshold is reached so the full bar can be seen
 };
 
 struct GameState
@@ -57,12 +71,20 @@ struct GameState
     float bucketTime = BUCKET_SWEEP_TIME * 0.5f; // time through the bucket's back and forth movement
     float bucketX = LAUNCHER_X; // centre of the bucket
     ShotStats shot;
+    std::vector<FloatingText> floaters; // small pop-ups next to pegs
 };
 
 // The box in the middle of the screen at the end of each shot
+struct PopupLine
+{
+    std::string text;
+    float scale;
+    SDL_Color colour;
+};
+
 struct Popup
 {
-    std::vector<std::string> lines;
+    std::vector<PopupLine> lines;
     float timer = 0.0f;
 };
 
@@ -102,6 +124,12 @@ struct Button
 // Helpers
 // ---------------------------------------------------------------------------
 
+static const SDL_Color COL_WHITE  = { 255, 255, 255, 255 };
+static const SDL_Color COL_YELLOW = { 255, 225, 40, 255 };
+static const SDL_Color COL_ORANGE = { 255, 150, 30, 255 };
+static const SDL_Color COL_GREEN  = { 90, 240, 90, 255 };
+static const SDL_Color COL_CYAN   = { 120, 230, 235, 255 };
+
 static void DrawFilledCircle(SDL_Renderer* r, float cx, float cy, float radius)
 {
     // SDL3 has no circle primitive, so draw one horizontal line per row.
@@ -133,6 +161,25 @@ static void DrawText(SDL_Renderer* r, const std::string& text, float x, float y,
     SDL_SetRenderScale(r, scale, scale);
     SDL_RenderDebugText(r, x / scale, y / scale, text.c_str());
     SDL_SetRenderScale(r, 1.0f, 1.0f);
+}
+
+// Text with a black outline so it can be read over the pegs. alpha fades it out.
+static void DrawOutlinedText(SDL_Renderer* r, const std::string& text, float x, float y, float scale,
+                             SDL_Color colour, Uint8 alpha = 255)
+{
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
+
+    const float o = std::max(1.0f, std::floor(scale / 2.0f)); // outline thickness
+    SDL_SetRenderDrawColor(r, 0, 0, 0, alpha);
+    for (int dx = -1; dx <= 1; ++dx)
+        for (int dy = -1; dy <= 1; ++dy)
+            if (dx != 0 || dy != 0)
+                DrawText(r, text, x + dx * o, y + dy * o, scale);
+
+    SDL_SetRenderDrawColor(r, colour.r, colour.g, colour.b, alpha);
+    DrawText(r, text, x, y, scale);
+
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
 }
 
 static bool PointInRect(float x, float y, const SDL_FRect& r)
@@ -289,10 +336,60 @@ static int FeverMultiplier(int orangeHit)
     return 1;
 }
 
-static void AddStyle(ShotStats& shot, const char* name, int points)
+// The score of the shot so far, worked out the same way as the pop-up at the end of the shot
+static long long LiveShotScore(const ShotStats& shot)
 {
+    return static_cast<long long>(shot.pegScoreSum) * shot.pegsHit + shot.stylePoints;
+}
+
+// Gives a free ball each time the shot's score passes the next threshold
+static void CheckFreeBalls(GameState& game)
+{
+    ShotStats& shot = game.shot;
+    while (shot.freeBallsEarned < FREE_BALL_THRESHOLD_COUNT &&
+           LiveShotScore(shot) >= FREE_BALL_THRESHOLDS[shot.freeBallsEarned])
+    {
+        shot.freeBallsEarned++;
+        game.ballsLeft++;
+        shot.freeBallFlash = FREE_BALL_FLASH_TIME;
+    }
+}
+
+// The small number next to a peg when it is hit
+static void AddPegPopup(GameState& game, const Peg& peg, int points)
+{
+    FloatingText f;
+    f.text = FormatNumber(points);
+    f.x = peg.x;
+    f.y = peg.y;
+    f.timer = PEG_POPUP_TIME;
+    if (peg.type == PegType::Orange) f.colour = { 255, 170, 60, 255 };
+    else if (peg.type == PegType::Purple) f.colour = { 235, 130, 255, 255 };
+    else f.colour = { 130, 190, 255, 255 };
+    game.floaters.push_back(f);
+}
+
+// Adds a style shot to the shot, shows it next to the peg that was hit and checks for free balls.
+// To add a new style shot, call this with its name, points and the peg that was hit.
+static void AddStyle(GameState& game, const char* name, int points, float x, float y)
+{
+    ShotStats& shot = game.shot;
     shot.styles.push_back({ name, points });
     shot.stylePoints += points;
+
+    FloatingText f;
+    f.text = name;
+    f.text2 = "+" + FormatNumber(points);
+    f.x = x;
+    f.y = y;
+    f.timer = STYLE_POPUP_TIME;
+    f.colour = COL_GREEN;
+    f.isStyle = true;
+    for (const FloatingText& other : game.floaters)
+        if (other.isStyle && other.x == x && other.y == y) f.stack++;
+    game.floaters.push_back(f);
+
+    CheckFreeBalls(game);
 }
 
 static bool AllPegsCleared(const std::vector<Peg>& pegs)
@@ -632,12 +729,12 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
             {
                 if (shot.distSinceContact >= SUPER_LONG_SHOT_DISTANCE)
                 {
-                    AddStyle(shot, "SUPER LONG SHOT", SUPER_LONG_SHOT_POINTS);
+                    AddStyle(game, "SUPER LONG SHOT", SUPER_LONG_SHOT_POINTS, peg.x, peg.y);
                     longShot = true;
                 }
                 else if (shot.distSinceContact >= LONG_SHOT_DISTANCE)
                 {
-                    AddStyle(shot, "LONG SHOT", LONG_SHOT_POINTS);
+                    AddStyle(game, "LONG SHOT", LONG_SHOT_POINTS, peg.x, peg.y);
                     longShot = true;
                 }
             }
@@ -648,7 +745,7 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
                 shot.consecutiveLong++;
                 if (shot.consecutiveLong >= 2)
                 {
-                    AddStyle(shot, "DOUBLE LONG SHOT", DOUBLE_LONG_SHOT_POINTS);
+                    AddStyle(game, "DOUBLE LONG SHOT", DOUBLE_LONG_SHOT_POINTS, peg.x, peg.y);
                     shot.consecutiveLong = 0;
                 }
             }
@@ -659,7 +756,7 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
 
             // Bounced off a side wall, travelled far enough and then hit a non-blue peg
             if (shot.bouncedOffWall && nonBlue && shot.distSinceWall >= OFF_THE_WALL_DISTANCE)
-                AddStyle(shot, "OFF THE WALL", OFF_THE_WALL_POINTS);
+                AddStyle(game, "OFF THE WALL", OFF_THE_WALL_POINTS, peg.x, peg.y);
             shot.bouncedOffWall = false;
 
             shot.lastContactPeg = i;
@@ -677,8 +774,11 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
             if (peg.type == PegType::Orange)
                 game.orangeHit++;
 
-            shot.pegScoreSum += BasePegScore(peg.type) * FeverMultiplier(game.orangeHit);
+            const int pegPoints = BasePegScore(peg.type) * FeverMultiplier(game.orangeHit);
+            shot.pegScoreSum += pegPoints;
             shot.pegsHit++;
+            AddPegPopup(game, peg, pegPoints);
+            CheckFreeBalls(game);
 
             // The last orange peg starts extreme fever
             if (peg.type == PegType::Orange && game.orangeHit == game.totalOrange)
@@ -687,7 +787,7 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
 
                 // Hat trick, the last 3 orange pegs were all hit in this shot
                 if (game.totalOrange >= 3 && shot.orangeAtStart <= game.totalOrange - 3)
-                    AddStyle(shot, "ORANGE HAT TRICK", ORANGE_HAT_TRICK_POINTS);
+                    AddStyle(game, "ORANGE HAT TRICK", ORANGE_HAT_TRICK_POINTS, peg.x, peg.y);
             }
         }
 
@@ -765,30 +865,38 @@ static void FinishShot(GameState& game, std::vector<Peg>& pegs, Popup& popup)
 
     popup.lines.clear();
     if (game.feverActive)
-        popup.lines.push_back(game.ultraFever ? "ULTRA EXTREME FEVER!" : "EXTREME FEVER!");
+        popup.lines.push_back({ game.ultraFever ? "ULTRA EXTREME FEVER!" : "EXTREME FEVER!", 3.0f, COL_ORANGE });
 
-    popup.lines.push_back("PEGS " + FormatNumber(shot.pegScoreSum) + " X " + std::to_string(shot.pegsHit) + " = " + FormatNumber(pegTotal));
-    for (const StyleAward& style : shot.styles)
-        popup.lines.push_back(style.name + " +" + FormatNumber(style.points));
+    // Same layout as Peggle: peg points x pegs hit, the total, then the style points
+    popup.lines.push_back({ FormatNumber(shot.pegScoreSum) + " X " + std::to_string(shot.pegsHit) + " PEGS", 3.0f, COL_YELLOW });
+    popup.lines.push_back({ FormatNumber(pegTotal), 5.0f, COL_WHITE });
+    if (shot.stylePoints > 0)
+    {
+        popup.lines.push_back({ "+" + FormatNumber(shot.stylePoints) + " STYLE POINTS", 3.0f, COL_GREEN });
+        popup.lines.push_back({ "SHOT SCORE " + FormatNumber(shotScore), 2.0f, COL_WHITE });
+    }
+
+    // Free balls from the bucket and from the score thresholds
+    const int freeBalls = shot.freeBallsEarned + (game.freeBall ? 1 : 0);
+    if (freeBalls == 1)
+        popup.lines.push_back({ "FREE BALL!", 3.0f, COL_CYAN });
+    else if (freeBalls > 1)
+        popup.lines.push_back({ std::to_string(freeBalls) + " FREE BALLS!", 3.0f, COL_CYAN });
 
     if (game.feverActive)
     {
         const long long ballBonus = static_cast<long long>(game.ballsLeft) * UNUSED_BALL_POINTS;
         const long long feverScore = shotScore + game.bucketPoints + ballBonus;
 
-        popup.lines.push_back("SHOT SCORE " + FormatNumber(shotScore));
-        popup.lines.push_back("BUCKET +" + FormatNumber(game.bucketPoints));
-        popup.lines.push_back("BALLS LEFT " + std::to_string(game.ballsLeft) + " X " + FormatNumber(UNUSED_BALL_POINTS) + " +" + FormatNumber(ballBonus));
-        popup.lines.push_back("FEVER SCORE +" + FormatNumber(feverScore));
+        popup.lines.push_back({ "BUCKET +" + FormatNumber(game.bucketPoints), 2.0f, COL_YELLOW });
+        popup.lines.push_back({ "BALLS LEFT " + std::to_string(game.ballsLeft) + " X " + FormatNumber(UNUSED_BALL_POINTS) + " +" + FormatNumber(ballBonus), 2.0f, COL_YELLOW });
+        popup.lines.push_back({ "FEVER SCORE +" + FormatNumber(feverScore), 3.0f, COL_WHITE });
 
         game.score += feverScore;
         game.levelComplete = true;
     }
     else
     {
-        popup.lines.push_back("SHOT SCORE +" + FormatNumber(shotScore));
-        if (game.freeBall)
-            popup.lines.push_back("FREE BALL!");
         game.score += shotScore;
 
         // The purple peg moves for the next shot
@@ -797,6 +905,142 @@ static void FinishShot(GameState& game, std::vector<Peg>& pegs, Popup& popup)
 
     popup.timer = POPUP_TIME;
     game.shotInProgress = false;
+}
+
+// The text in the middle of the screen at the end of a shot
+static void DrawShotPopup(SDL_Renderer* r, const Popup& popup)
+{
+    const float gap = 10.0f;
+    float totalH = -gap;
+    for (const PopupLine& line : popup.lines)
+        totalH += 8.0f * line.scale + gap;
+
+    const float fade = std::max(0.0f, std::min(1.0f, popup.timer / POPUP_FADE_TIME));
+    const Uint8 alpha = static_cast<Uint8>(255.0f * fade);
+
+    float y = (PLAY_TOP + PLAY_BOTTOM) / 2.0f - totalH / 2.0f;
+    for (const PopupLine& line : popup.lines)
+    {
+        DrawOutlinedText(r, line.text, LAUNCHER_X - TextWidth(line.text, line.scale) / 2.0f, y, line.scale, line.colour, alpha);
+        y += 8.0f * line.scale + gap;
+    }
+}
+
+// The small points next to pegs and the style shot names
+static void DrawFloatingTexts(SDL_Renderer* r, const std::vector<FloatingText>& floaters)
+{
+    for (const FloatingText& f : floaters)
+    {
+        if (!f.isStyle)
+        {
+            // Points sit to the right of the peg, or the left if there is no room
+            const float scale = PEG_POPUP_SCALE;
+            const float w = TextWidth(f.text, scale);
+            float x = f.x + PEG_RADIUS + 3.0f;
+            if (x + w > PLAY_RIGHT - 2.0f) x = f.x - PEG_RADIUS - 3.0f - w;
+            DrawOutlinedText(r, f.text, x, f.y - 4.0f * scale, scale, f.colour);
+        }
+        else
+        {
+            // Name with the points under it, above the peg and kept inside the play area
+            const float scale = STYLE_POPUP_SCALE;
+            const float lineH = 8.0f * scale + 4.0f;
+            const float blockH = 2.0f * lineH;
+            const float w = std::max(TextWidth(f.text, scale), TextWidth(f.text2, scale));
+
+            const float fade = std::max(0.0f, std::min(1.0f, f.timer / 0.3f));
+            const Uint8 alpha = static_cast<Uint8>(255.0f * fade);
+
+            const float cx = std::max(PLAY_LEFT + 2.0f + w / 2.0f, std::min(f.x, PLAY_RIGHT - 2.0f - w / 2.0f));
+            const float y = std::max(PLAY_TOP + 2.0f, f.y - PEG_RADIUS - 10.0f - blockH - f.stack * (blockH + 6.0f));
+
+            DrawOutlinedText(r, f.text, cx - TextWidth(f.text, scale) / 2.0f, y, scale, f.colour, alpha);
+            DrawOutlinedText(r, f.text2, cx - TextWidth(f.text2, scale) / 2.0f, y + lineH, scale, f.colour, alpha);
+        }
+    }
+}
+
+// Left border: the balls left stacked up between two bars that fill as the shot score climbs.
+// The bars are green for the first free ball, purple for the second and yellow for the third.
+static void DrawBallMeter(SDL_Renderer* r, const GameState& game, bool live)
+{
+    const ShotStats& shot = game.shot;
+    const SDL_Color stageColours[FREE_BALL_THRESHOLD_COUNT] = {
+        { 60, 200, 80, 255 }, { 175, 70, 215, 255 }, { 250, 210, 50, 255 }
+    };
+
+    // Which bar is showing, how full it is and whether the free ball circle is lit
+    int stage = 0;
+    float fill = 0.0f;
+    bool lit = false;
+    if (live)
+    {
+        stage = shot.freeBallsEarned;
+        if (shot.freeBallFlash > 0.0f && stage > 0)
+        {
+            // A threshold was just reached, hold the full bar for a moment
+            stage--;
+            fill = 1.0f;
+            lit = true;
+        }
+        else if (stage >= FREE_BALL_THRESHOLD_COUNT)
+        {
+            // All three earned, it stays full and yellow
+            fill = 1.0f;
+            lit = true;
+        }
+        else
+        {
+            fill = static_cast<float>(LiveShotScore(shot)) / static_cast<float>(FREE_BALL_THRESHOLDS[stage]);
+            fill = std::max(0.0f, std::min(fill, 1.0f));
+        }
+    }
+    const SDL_Color col = stageColours[std::min(stage, FREE_BALL_THRESHOLD_COUNT - 1)];
+
+    const float cx = BORDER_LEFT / 2.0f;
+    const float circleR = FREE_BALL_CIRCLE_RADIUS;
+    const float cy = PLAY_BOTTOM - circleR - 12.0f;
+    const float barTop = PLAY_TOP + 10.0f;
+    const float barH = cy - barTop; // the bars run down into the circle
+    const float barX[2] = { 3.0f, BORDER_LEFT - 3.0f - FREE_BALL_BAR_WIDTH };
+
+    // Two bars, filling from the bottom
+    for (float x : barX)
+    {
+        const SDL_FRect back = { x, barTop, FREE_BALL_BAR_WIDTH, barH };
+        SDL_SetRenderDrawColor(r, 45, 48, 62, 255);
+        SDL_RenderFillRect(r, &back);
+
+        const float h = barH * fill;
+        const SDL_FRect front = { x, cy - h, FREE_BALL_BAR_WIDTH, h };
+        SDL_SetRenderDrawColor(r, col.r, col.g, col.b, 255);
+        SDL_RenderFillRect(r, &front);
+
+        SDL_SetRenderDrawColor(r, 120, 120, 135, 255);
+        SDL_RenderRect(r, &back);
+    }
+
+    // The free ball circle joining the bars, filled with colour once the threshold is hit
+    SDL_SetRenderDrawColor(r, col.r, col.g, col.b, 255);
+    DrawFilledCircle(r, cx, cy, circleR);
+    if (lit) SDL_SetRenderDrawColor(r, col.r, col.g, col.b, 255);
+    else SDL_SetRenderDrawColor(r, 30, 33, 46, 255);
+    DrawFilledCircle(r, cx, cy, circleR - 3.0f);
+
+    if (lit) SDL_SetRenderDrawColor(r, 15, 15, 20, 255);
+    else SDL_SetRenderDrawColor(r, 255, 255, 255, 255);
+    DrawText(r, "FREE", cx - TextWidth("FREE", 1.0f) / 2.0f, cy - 9.0f, 1.0f);
+    DrawText(r, "BALL", cx - TextWidth("BALL", 1.0f) / 2.0f, cy + 1.0f, 1.0f);
+
+    // Balls left, stacked up from just above the circle
+    const int n = std::max(game.ballsLeft, 0);
+    const float firstY = cy - circleR - 4.0f - STACK_BALL_RADIUS;
+    const float topY = barTop + 6.0f + STACK_BALL_RADIUS;
+    float pitch = STACK_BALL_PITCH;
+    if (n > 1) pitch = std::min(pitch, (firstY - topY) / static_cast<float>(n - 1));
+    SDL_SetRenderDrawColor(r, 230, 230, 240, 255);
+    for (int i = 0; i < n; ++i)
+        DrawFilledCircle(r, cx, firstY - i * pitch, STACK_BALL_RADIUS);
 }
 
 // ---------------------------------------------------------------------------
@@ -1036,6 +1280,16 @@ int main(int argc, char* argv[])
             continue;
         }
 
+        // ---- Pop-up timers ----
+        // Done before the physics so a pop-up made this frame is always drawn at least once
+        if (game.shot.freeBallFlash > 0.0f)
+            game.shot.freeBallFlash -= frameDt;
+        for (FloatingText& f : game.floaters)
+            f.timer -= frameDt;
+        game.floaters.erase(std::remove_if(game.floaters.begin(), game.floaters.end(),
+                                           [](const FloatingText& f) { return f.timer <= 0.0f; }),
+                            game.floaters.end());
+
         // ---- Update (fixed timestep) ----
         // Time slows down while the shot is in extreme fever
         const float timeScale = (game.feverActive && ball.active) ? FEVER_SLOWMO : 1.0f;
@@ -1163,6 +1417,9 @@ int main(int argc, char* argv[])
             DrawFilledCircle(renderer, ball.x, ball.y, BALL_RADIUS);
         }
 
+        // Points next to pegs and style shot names
+        DrawFloatingTexts(renderer, game.floaters);
+
         // Black borders
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         const SDL_FRect borders[4] = {
@@ -1180,12 +1437,8 @@ int main(int argc, char* argv[])
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         DrawText(renderer, scoreText, WINDOW_W - 10.0f - TextWidth(scoreText, 2.0f), 22.0f, 2.0f);
 
-        // Balls left, left border
-        const std::string ballsText = std::to_string(game.ballsLeft);
-        SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
-        DrawText(renderer, "BALLS", (BORDER_LEFT - TextWidth("BALLS", 1.0f)) / 2.0f, PLAY_TOP + 10.0f, 1.0f);
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        DrawText(renderer, ballsText, (BORDER_LEFT - TextWidth(ballsText, 2.0f)) / 2.0f, PLAY_TOP + 24.0f, 2.0f);
+        // Balls left stacked up in the left border with the free ball bars either side
+        DrawBallMeter(renderer, game, game.shotInProgress || popup.timer > 0.0f);
 
         // Fever meter, right border. One segment per orange peg hit, filling from the bottom.
         const int   segPitch = METER_SEGMENT_HEIGHT + METER_SEGMENT_GAP;
@@ -1212,26 +1465,7 @@ int main(int argc, char* argv[])
 
         // Popup with the points for the shot
         if (popup.timer > 0.0f && !popup.lines.empty())
-        {
-            const float scale = 2.0f;
-            const float lineH = 22.0f;
-            float maxW = 0.0f;
-            for (const std::string& line : popup.lines)
-                maxW = std::max(maxW, TextWidth(line, scale));
-
-            const float boxW = maxW + 30.0f;
-            const float boxH = popup.lines.size() * lineH + 20.0f;
-            const SDL_FRect box = { LAUNCHER_X - boxW / 2.0f, (PLAY_TOP + PLAY_BOTTOM) / 2.0f - boxH / 2.0f, boxW, boxH };
-
-            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 200);
-            SDL_RenderFillRect(renderer, &box);
-            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
-
-            SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
-            for (size_t i = 0; i < popup.lines.size(); ++i)
-                DrawText(renderer, popup.lines[i], LAUNCHER_X - TextWidth(popup.lines[i], scale) / 2.0f, box.y + 10.0f + i * lineH, scale);
-        }
+            DrawShotPopup(renderer, popup);
 
         // Pause, fail and level clear pop-ups, drawn over the level
         if (screen == Screen::Paused || screen == Screen::Fail || screen == Screen::LevelClear)
