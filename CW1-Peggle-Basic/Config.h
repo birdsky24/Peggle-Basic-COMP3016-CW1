@@ -119,7 +119,7 @@ constexpr int   METER_SEGMENT_HEIGHT = 16;
 constexpr int   METER_SEGMENT_GAP = 3;
 
 // Leaderboard
-constexpr const char* LEADERBOARD_FILE = "leaderboard.txt"; // saved next to where the game is run from
+constexpr const char* LEADERBOARD_FILE = "leaderboard.dat"; // encrypted and signed, saved next to where the game is run from
 constexpr int   LEADERBOARD_SCORES_PER_LEVEL = 10; // best scores kept for each level, lower ones are deleted from the file
 
 // Moving bucket at the bottom, the rectangle catches the shot and the triangles either side bounce it

@@ -797,9 +797,13 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
         {
             const bool nonBlue = (peg.type != PegType::Blue);
 
+            // A peg that was already hit this shot is only waiting to be deleted. It still bounces the ball
+            // (and counts as the last peg touched) but it can't award a style shot.
+            const bool freshNonBlue = nonBlue && !peg.hit;
+
             // Long shots, travel a long way from a non-blue peg to another non-blue peg
             bool longShot = false;
-            if (nonBlue && shot.lastContactNonBlue)
+            if (freshNonBlue && shot.lastContactNonBlue)
             {
                 if (shot.distSinceContact >= SUPER_LONG_SHOT_DISTANCE)
                 {
@@ -829,7 +833,7 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
             }
 
             // Bounced off a side wall, travelled far enough and then hit a non-blue peg
-            if (shot.bouncedOffWall && nonBlue && shot.distSinceWall >= OFF_THE_WALL_DISTANCE)
+            if (shot.bouncedOffWall && freshNonBlue && shot.distSinceWall >= OFF_THE_WALL_DISTANCE)
                 AddStyle(game, "OFF THE WALL", OFF_THE_WALL_POINTS, peg.x, peg.y);
             shot.bouncedOffWall = false;
 

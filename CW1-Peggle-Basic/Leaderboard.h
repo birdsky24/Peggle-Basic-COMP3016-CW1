@@ -11,12 +11,12 @@ struct ScoreEntry
 };
 
 // Reads every saved score from the leaderboard file, highest score first.
-// A missing file just gives an empty list.
+// The file is encrypted and signed. A missing file, or one that has been edited or isn't valid, gives an empty list.
 std::vector<ScoreEntry> LoadScores();
 
 // The scores for one level out of a list from LoadScores, highest first (at most LEADERBOARD_SCORES_PER_LEVEL of them).
 std::vector<ScoreEntry> ScoresForLevel(const std::vector<ScoreEntry>& scores, int level);
 
-// Adds a score to the leaderboard file. Each level only keeps its best LEADERBOARD_SCORES_PER_LEVEL scores,
+// Adds a score to the (encrypted) leaderboard file. Each level only keeps its best LEADERBOARD_SCORES_PER_LEVEL scores,
 // so lower ones are deleted from the file. Returns false if the file couldn't be written.
 bool SaveScore(const ScoreEntry& entry);
