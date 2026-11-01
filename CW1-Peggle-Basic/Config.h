@@ -44,3 +44,37 @@ constexpr float GUIDE_LENGTH = 0.4f * (PLAY_BOTTOM - PLAY_TOP); // fixed length 
 constexpr float GUIDE_DOT_SPACING = 20.0f;  // distance between dots along the path
 constexpr float GUIDE_START_OFFSET = 28.0f;  // gap between launcher and first dot
 constexpr float GUIDE_DOT_RADIUS = 4.0f;
+
+// Score for each peg type before the fever multiplier
+constexpr int   SCORE_BLUE = 10;
+constexpr int   SCORE_ORANGE = 100;
+constexpr int   SCORE_PURPLE = 500;
+
+// Style shots, distances are measured as a fraction of the play area height
+constexpr float LONG_SHOT_DISTANCE = (PLAY_BOTTOM - PLAY_TOP) / 3.0f;
+constexpr float SUPER_LONG_SHOT_DISTANCE = (PLAY_BOTTOM - PLAY_TOP) * 2.0f / 3.0f;
+constexpr float OFF_THE_WALL_DISTANCE = (PLAY_BOTTOM - PLAY_TOP) / 5.0f; // minimum distance travelled after the wall bounce
+constexpr int   LONG_SHOT_POINTS = 5000;
+constexpr int   SUPER_LONG_SHOT_POINTS = 25000;
+constexpr int   OFF_THE_WALL_POINTS = 25000;
+constexpr int   DOUBLE_LONG_SHOT_POINTS = 25000;
+constexpr int   ORANGE_HAT_TRICK_POINTS = 100000;
+
+// Shots
+constexpr int   STARTING_BALLS = 10;
+
+// Extreme fever, 6 big circles along the bottom make 5 buckets between them
+constexpr int   FEVER_BUCKET_COUNT = 5;
+constexpr int   FEVER_BUCKET_POINTS[FEVER_BUCKET_COUNT] = { 10000, 50000, 100000, 50000, 10000 };
+constexpr int   ULTRA_BUCKET_POINTS = 100000; // every bucket is worth this if every peg is cleared
+constexpr int   UNUSED_BALL_POINTS = 10000;
+constexpr float FEVER_CIRCLE_RADIUS = 30.0f;
+constexpr float FEVER_CIRCLE_Y = PLAY_BOTTOM - 20.0f;
+constexpr float FEVER_SLOWMO = 0.3f; // 1.0 = normal speed
+
+// Popup shown at the end of each shot
+constexpr float POPUP_TIME = 3.0f; // seconds
+
+// Fever meter in the right border
+constexpr int   METER_SEGMENT_HEIGHT = 16;
+constexpr int   METER_SEGMENT_GAP = 3;
