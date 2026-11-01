@@ -369,9 +369,10 @@ static void CheckFreeBalls(GameState& game)
     while (shot.freeBallsEarned < FREE_BALL_THRESHOLD_COUNT &&
            LiveShotScore(shot) >= FREE_BALL_THRESHOLDS[shot.freeBallsEarned])
     {
+        // Each of the 3 free balls has its own sound
+        PlaySfx(static_cast<Sfx>(static_cast<int>(Sfx::FreeBallScore1) + shot.freeBallsEarned));
         shot.freeBallsEarned++;
         game.ballsLeft++;
-        PlaySfx(Sfx::FreeBall);
         shot.freeBallFlash = FREE_BALL_FLASH_TIME;
     }
 }
@@ -1296,6 +1297,7 @@ int main(int argc, char* argv[])
             if (peg.type == PegType::Orange) game.totalOrange++;
         popup = Popup();
         ball = Ball();
+        ResetLevelMusic(); // the level song starts from the beginning
         removeTimer = 0.0f;
         removeCount = 0;
         nameInput.clear();
@@ -1442,9 +1444,12 @@ int main(int argc, char* argv[])
         else if (fastForward && screen == Screen::Playing) frameDt *= GAME_SPEED_FAST;
 
         // ---- Music ----
-        // Extreme fever has its own song, everywhere else (menus too) plays the background music
-        const bool inLevel = (screen == Screen::Playing || screen == Screen::Paused);
-        SetMusic((inLevel && game.feverActive) ? Music::Fever : Music::Background);
+        // The menu song plays everywhere except while a level is being played (pausing a level or going back to
+        // the main menu brings it back where it left off). Levels have their own song, and so does extreme fever.
+        Music music = Music::Menu;
+        if (screen == Screen::Playing)
+            music = game.feverActive ? Music::Fever : Music::Level;
+        SetMusic(music);
         SetRouletteSpin(screen == Screen::Playing && game.roulette.active && !game.roulette.revealed);
 
         // ---- Main menu ----

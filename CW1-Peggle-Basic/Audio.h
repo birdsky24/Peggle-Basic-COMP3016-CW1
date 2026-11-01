@@ -15,6 +15,9 @@ enum class Sfx
     Applause,
     StyleShot,
     PurplePeg,
+    FreeBallScore1, // the 3 free balls for a high scoring shot, one sound each
+    FreeBallScore2,
+    FreeBallScore3,
     SlowMotion,
     Count
 };
@@ -22,8 +25,9 @@ enum class Sfx
 enum class Music
 {
     None,
-    Background,
-    Fever
+    Menu,  // main menu and the pause, fail and clear screens
+    Level, // while a level is being played
+    Fever  // extreme fever
 };
 
 // Call once after SDL_Init(SDL_INIT_AUDIO). Returns false if there is no audio, the game still runs.
@@ -33,8 +37,13 @@ void AudioShutdown();
 // Plays a sound once. pitchSemitones raises (or lowers) the pitch, 12 is one octave up.
 void PlaySfx(Sfx sfx, float pitchSemitones = 0.0f);
 
-// Plays the song, swapping out the one that was playing. Does nothing if it is already playing.
+// Switches to a song. The one that was playing is paused (not stopped), so when it is switched back to
+// it carries on from the same place. All songs loop. Does nothing if it is already playing.
 void SetMusic(Music music);
+
+// Starts the level and fever songs from the beginning next time they play, call it when a level (re)starts.
+// The menu song is left alone so it still carries on from where it was.
+void ResetLevelMusic();
 
 // The sound that loops while the 50/50 is spinning
 void SetRouletteSpin(bool on);

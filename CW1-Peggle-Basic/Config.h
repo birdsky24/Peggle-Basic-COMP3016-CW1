@@ -136,20 +136,24 @@ constexpr float GAME_SPEED_FAST = 3.0f;
 
 // Sounds. Every file is looked for in the folder the game is run from. These are placeholder names, change them to match
 // your mp3 files. A file that is missing is skipped (a message is written to the log), so they can be added one at a time.
-constexpr const char* SOUND_BUTTON_CLICK = "sounds/button_click.mp3"; // clicking a button in a menu
+constexpr const char* SOUND_BUTTON_CLICK = "sounds/button2.ogg"; // clicking a button in a menu
 constexpr const char* SOUND_PEG_HIT = "sounds/peg_hit.ogg";           // the ball hits a peg, higher each peg in the shot
-constexpr const char* SOUND_PEG_REMOVE = "sounds/peg_remove.mp3";     // a hit peg is deleted
-constexpr const char* SOUND_FREE_BALL = "sounds/free_ball.ogg";       // bucket, score threshold or winning the 50/50
+constexpr const char* SOUND_PEG_REMOVE = "sounds/pegpop.ogg";     // a hit peg is deleted
+constexpr const char* SOUND_FREE_BALL = "sounds/free_ball.ogg";       // catching the shot in the bucket or winning the 50/50
+constexpr const char* SOUND_FREE_BALL_1 = "sounds/extraball.ogg";   // the shot's score reaches the 1st free ball (25,000)
+constexpr const char* SOUND_FREE_BALL_2 = "sounds/extraball2.ogg";   // the 2nd free ball (75,000)
+constexpr const char* SOUND_FREE_BALL_3 = "sounds/extraball3.ogg";   // the 3rd free ball (125,000)
 constexpr const char* SOUND_ROULETTE_SPIN = "sounds/roulette_spin.ogg"; // loops while the 50/50 numbers swing
 constexpr const char* SOUND_ROULETTE_LOSE = "sounds/roulette_lose.ogg";
-constexpr const char* SOUND_ROULETTE_WIN = "sounds/roulette_win.mp3";
-constexpr const char* SOUND_SHOOT = "sounds/shoot.mp3";               // the ball is fired
-constexpr const char* SOUND_APPLAUSE = "sounds/applause.mp3";         // the last orange peg is hit
-constexpr const char* SOUND_STYLE_SHOT = "sounds/style_shot.mp3";     // any style shot
-constexpr const char* SOUND_PURPLE_PEG = "sounds/purple_peg.mp3";     // the ball hits the purple peg
-constexpr const char* SOUND_SLOW_MOTION = "sounds/slow_motion.mp3";   // time slows down just before the last orange peg is hit
-constexpr const char* MUSIC_BACKGROUND = "sounds/background_music.mp3"; // loops in the menus and while playing
-constexpr const char* MUSIC_FEVER = "sounds/extreme_fever.mp3";       // loops during extreme fever
+constexpr const char* SOUND_ROULETTE_WIN = "sounds/free_ball.ogg";
+constexpr const char* SOUND_SHOOT = "sounds/cannonshot.ogg";               // the ball is fired
+constexpr const char* SOUND_APPLAUSE = "sounds/applause.ogg";         // the last orange peg is hit
+constexpr const char* SOUND_STYLE_SHOT = "sounds/gapbonus1.ogg";     // any style shot
+constexpr const char* SOUND_PURPLE_PEG = "sounds/peghit_plus_mega9.ogg";     // the ball hits the purple peg
+constexpr const char* SOUND_SLOW_MOTION = "sounds/timpaniroll.ogg";   // time slows down just before the last orange peg is hit
+constexpr const char* MUSIC_MENU = "sounds/Peer Gynt Suite No. 1, Op. 46 - Morning Mood.mp3";         // loops in the main menu and the pause, fail and clear screens
+constexpr const char* MUSIC_LEVEL = "sounds/Peggle Beat.mp3";  // loops while a level is being played
+constexpr const char* MUSIC_FEVER = "sounds/Ode to Joy.mp3";       // loops during extreme fever
 
 constexpr float SFX_VOLUME = 0.8f;   // 0.0 to 1.0
 constexpr float MUSIC_VOLUME = 0.5f;

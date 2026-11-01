@@ -14,13 +14,20 @@ namespace
 
     MIX_Mixer* g_mixer = nullptr;
     MIX_Audio* g_sfx[SFX_COUNT] = {};
-    MIX_Audio* g_background = nullptr;
-    MIX_Audio* g_fever = nullptr;
     MIX_Audio* g_rouletteSpin = nullptr;
+
+    // Each song has its own track, so pausing one keeps its place
+    struct Song
+    {
+        MIX_Audio* audio = nullptr;
+        MIX_Track* track = nullptr;
+    };
+    Song g_menuSong;
+    Song g_levelSong;
+    Song g_feverSong;
 
     MIX_Track* g_sfxTracks[SFX_TRACK_COUNT] = {};
     int        g_nextSfxTrack = 0;
-    MIX_Track* g_musicTrack = nullptr;
     MIX_Track* g_spinTrack = nullptr;
 
     Music g_music = Music::None;
@@ -40,6 +47,9 @@ namespace
         case Sfx::Applause:     return SOUND_APPLAUSE;
         case Sfx::StyleShot:    return SOUND_STYLE_SHOT;
         case Sfx::PurplePeg:    return SOUND_PURPLE_PEG;
+        case Sfx::FreeBallScore1: return SOUND_FREE_BALL_1;
+        case Sfx::FreeBallScore2: return SOUND_FREE_BALL_2;
+        case Sfx::FreeBallScore3: return SOUND_FREE_BALL_3;
         case Sfx::SlowMotion:   return SOUND_SLOW_MOTION;
         default:                return "";
         }
@@ -52,6 +62,15 @@ namespace
         if (!audio)
             SDL_Log("Sound not loaded (%s): %s", path, SDL_GetError());
         return audio;
+    }
+
+    Song* SongFor(Music music)
+    {
+        Song* song = nullptr;
+        if (music == Music::Menu) song = &g_menuSong;
+        else if (music == Music::Level) song = &g_levelSong;
+        else if (music == Music::Fever) song = &g_feverSong;
+        return (song && song->audio && song->track) ? song : nullptr;
     }
 
     // Starts a track from the beginning and loops it forever
@@ -86,15 +105,23 @@ bool AudioInit()
     for (int i = 0; i < SFX_COUNT; ++i)
         g_sfx[i] = Load(SfxPath(static_cast<Sfx>(i)), true);
     g_rouletteSpin = Load(SOUND_ROULETTE_SPIN, true);
-    g_background = Load(MUSIC_BACKGROUND, false);
-    g_fever = Load(MUSIC_FEVER, false);
+    g_menuSong.audio = Load(MUSIC_MENU, false);
+    g_levelSong.audio = Load(MUSIC_LEVEL, false);
+    g_feverSong.audio = Load(MUSIC_FEVER, false);
 
     for (MIX_Track*& track : g_sfxTracks)
         track = MIX_CreateTrack(g_mixer);
-    g_musicTrack = MIX_CreateTrack(g_mixer);
     g_spinTrack = MIX_CreateTrack(g_mixer);
 
-    MIX_SetTrackGain(g_musicTrack, MUSIC_VOLUME);
+    for (Song* song : { &g_menuSong, &g_levelSong, &g_feverSong })
+    {
+        song->track = MIX_CreateTrack(g_mixer);
+        if (song->track && song->audio)
+        {
+            MIX_SetTrackAudio(song->track, song->audio);
+            MIX_SetTrackGain(song->track, MUSIC_VOLUME);
+        }
+    }
     MIX_SetTrackGain(g_spinTrack, SFX_VOLUME);
     return true;
 }
@@ -112,11 +139,12 @@ void AudioShutdown()
         if (audio) MIX_DestroyAudio(audio);
         audio = nullptr;
     }
-    for (MIX_Audio** audio : { &g_rouletteSpin, &g_background, &g_fever })
+    for (MIX_Audio** audio : { &g_rouletteSpin, &g_menuSong.audio, &g_levelSong.audio, &g_feverSong.audio })
     {
         if (*audio) MIX_DestroyAudio(*audio);
         *audio = nullptr;
     }
+    g_menuSong.track = g_levelSong.track = g_feverSong.track = nullptr;
     MIX_Quit();
 }
 
@@ -140,17 +168,31 @@ void PlaySfx(Sfx sfx, float pitchSemitones)
 void SetMusic(Music music)
 {
     if (!g_mixer || music == g_music) return;
+
+    // The song that was playing is paused, not stopped, so it carries on from the same place later
+    if (Song* old = SongFor(g_music))
+        MIX_PauseTrack(old->track);
     g_music = music;
 
-    MIX_StopTrack(g_musicTrack, 0);
+    Song* song = SongFor(music);
+    if (!song) return;
 
-    MIX_Audio* audio = nullptr;
-    if (music == Music::Background) audio = g_background;
-    else if (music == Music::Fever) audio = g_fever;
-    if (!audio) return;
+    if (MIX_TrackPaused(song->track))
+        MIX_ResumeTrack(song->track);
+    else if (!MIX_TrackPlaying(song->track))
+        PlayLooping(song->track, 300); // it was stopped (or never played), so it starts from the beginning
+}
 
-    MIX_SetTrackAudio(g_musicTrack, audio);
-    PlayLooping(g_musicTrack, 300);
+void ResetLevelMusic()
+{
+    if (!g_mixer) return;
+
+    for (Song* song : { &g_levelSong, &g_feverSong })
+        if (song->track) MIX_StopTrack(song->track, 0);
+
+    // Make sure the next SetMusic starts the song again
+    if (g_music == Music::Level || g_music == Music::Fever)
+        g_music = Music::None;
 }
 
 void SetRouletteSpin(bool on)
