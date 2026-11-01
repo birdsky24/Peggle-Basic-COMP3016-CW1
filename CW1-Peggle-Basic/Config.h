@@ -61,6 +61,21 @@ constexpr int   OFF_THE_WALL_POINTS = 25000;
 constexpr int   DOUBLE_LONG_SHOT_POINTS = 25000;
 constexpr int   ORANGE_HAT_TRICK_POINTS = 100000;
 
+// Orange Attack, fill a whole score multiplier stage in one shot. Each number is how many orange pegs
+// must be hit for a stage to be full (x1, x2, x3, x5, x10). These match FeverMultiplier() in main.cpp.
+constexpr int   ORANGE_STAGE_COUNT = 5;
+constexpr int   ORANGE_STAGE_ENDS[ORANGE_STAGE_COUNT] = { 10, 15, 19, 22, ORANGE_PEG_COUNT };
+constexpr int   ORANGE_ATTACK_POINTS = 50000;
+
+// Bucket style shots
+constexpr int   FREE_BALL_SKILLS_POINTS = 5000;   // into the bucket after hitting exactly one peg
+constexpr int   LUCKY_BOUNCE_POINTS = 25000;      // bucket edge, then a peg, then into the bucket
+constexpr int   KICK_THE_BUCKET_POINTS = 25000;   // bucket edge, then straight into the last orange peg
+constexpr int   MAD_SKILLZ_STREAK = 5;            // bucket shots in a row
+constexpr int   MAD_SKILLZ_POINTS = 25000;
+constexpr int   CRAZY_MAD_SKILLZ_STREAK = 10;
+constexpr int   CRAZY_MAD_SKILLZ_POINTS = 100000;
+
 // Shots
 constexpr int   STARTING_BALLS = 10;
 

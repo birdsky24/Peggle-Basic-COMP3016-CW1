@@ -54,6 +54,9 @@ struct ShotStats
     int consecutiveLong = 0; // long shots in a row
     int freeBallsEarned = 0; // free balls given so far this shot for reaching the score thresholds
     float freeBallFlash = 0.0f; // counts down after a threshold is reached so the full bar can be seen
+    bool bucketEdgeHit = false; // the ball has bounced off the edge of the bucket this shot
+    bool pegAfterEdge = false; // and has touched a peg since the last time it hit the edge
+    bool edgeSincePeg = false; // the last thing the ball bounced off was the bucket edge
 };
 
 struct GameState
@@ -68,6 +71,7 @@ struct GameState
     int bucketPoints = 0;
     bool levelComplete = false;
     bool freeBall = false; // this shot was caught by the bucket
+    int bucketStreak = 0; // bucket shots in a row, for Mad Skillz
     float bucketTime = BUCKET_SWEEP_TIME * 0.5f; // time through the bucket's back and forth movement
     float bucketX = LAUNCHER_X; // centre of the bucket
     ShotStats shot;
@@ -608,8 +612,9 @@ static void GetBucketShape(float centreX, SDL_FRect& rect, Triangle& left, Trian
     right = { { { r, apex }, { r, PLAY_BOTTOM }, { r + BUCKET_TRI_WIDTH, PLAY_BOTTOM } } };
 }
 
-// Pushes the ball out of a triangle and bounces it off the nearest edge
-static void BounceOffTriangle(Ball& ball, const Triangle& tri)
+// Pushes the ball out of a triangle and bounces it off the nearest edge.
+// Returns true if the ball hit the top or sloped edge of the bucket. Scraping the inside wall of the bucket doesn't count.
+static bool BounceOffTriangle(Ball& ball, const Triangle& tri)
 {
     // Closest point on the triangle's edges to the ball's centre
     float bestX = 0.0f, bestY = 0.0f;
@@ -645,7 +650,7 @@ static void BounceOffTriangle(Ball& ball, const Triangle& tri)
                         (side[0] <= 0.0f && side[1] <= 0.0f && side[2] <= 0.0f);
 
     const float dist = std::sqrt(bestDistSq);
-    if (!inside && dist >= BALL_RADIUS) return;
+    if (!inside && dist >= BALL_RADIUS) return false;
 
     float nx = 0.0f, ny = -1.0f;
     if (dist > 0.0001f)
@@ -664,6 +669,8 @@ static void BounceOffTriangle(Ball& ball, const Triangle& tri)
         ball.vx -= (1.0f + PEG_BOUNCE) * vn * nx;
         ball.vy -= (1.0f + PEG_BOUNCE) * vn * ny;
     }
+
+    return ny < -0.3f; // the surface faces upwards, so it is the rim and not the inside wall
 }
 
 // hitOrder holds the index of every peg hit by this shot, in the order they were hit
@@ -780,16 +787,35 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
             AddPegPopup(game, peg, pegPoints);
             CheckFreeBalls(game);
 
+            // Orange Attack, this orange peg filled a multiplier stage and the whole stage was hit in this shot
+            if (peg.type == PegType::Orange)
+            {
+                for (int s = 0; s < ORANGE_STAGE_COUNT; ++s)
+                {
+                    const int stageStart = (s == 0) ? 0 : ORANGE_STAGE_ENDS[s - 1];
+                    if (game.orangeHit == ORANGE_STAGE_ENDS[s] && shot.orangeAtStart <= stageStart)
+                        AddStyle(game, "ORANGE ATTACK!", ORANGE_ATTACK_POINTS, peg.x, peg.y);
+                }
+            }
+
             // The last orange peg starts extreme fever
             if (peg.type == PegType::Orange && game.orangeHit == game.totalOrange)
             {
                 game.feverActive = true;
+
+                // Kick the bucket, the ball came straight off the bucket's edge into the last orange peg
+                if (shot.edgeSincePeg)
+                    AddStyle(game, "KICK THE BUCKET", KICK_THE_BUCKET_POINTS, peg.x, peg.y);
 
                 // Hat trick, the last 3 orange pegs were all hit in this shot
                 if (game.totalOrange >= 3 && shot.orangeAtStart <= game.totalOrange - 3)
                     AddStyle(game, "ORANGE HAT TRICK", ORANGE_HAT_TRICK_POINTS, peg.x, peg.y);
             }
         }
+
+        // Any peg touched after the bucket edge counts as a bounce for Lucky Bounce
+        if (shot.bucketEdgeHit) shot.pegAfterEdge = true;
+        shot.edgeSincePeg = false;
 
         // Normal points from the peg centre to the ball centre
         const float dist = std::sqrt(distSq);
@@ -818,13 +844,47 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
         SDL_FRect bucketRect;
         Triangle leftTri, rightTri;
         GetBucketShape(game.bucketX, bucketRect, leftTri, rightTri);
-        BounceOffTriangle(ball, leftTri);
-        BounceOffTriangle(ball, rightTri);
+        const bool hitLeft = BounceOffTriangle(ball, leftTri);
+        const bool hitRight = BounceOffTriangle(ball, rightTri);
+        if (hitLeft || hitRight)
+        {
+            shot.bucketEdgeHit = true;
+            shot.pegAfterEdge = false; // a peg has to be hit after the most recent edge bounce
+            shot.edgeSincePeg = true;
+        }
 
         // Dropping into the rectangle deletes the shot and gives the shot back
         if (ball.x >= bucketRect.x && ball.x <= bucketRect.x + bucketRect.w && ball.y + BALL_RADIUS >= bucketRect.y)
         {
             ball.active = false;
+
+            // Free Ball Skills, straight into the bucket after hitting exactly one peg
+            if (shot.pegsHit == 1 && !shot.bucketEdgeHit)
+                AddStyle(game, "FREE BALL SKILLS!", FREE_BALL_SKILLS_POINTS, ball.x, ball.y);
+
+            // Lucky Bounce, off the edge, off a peg and back into the bucket
+            if (shot.bucketEdgeHit && shot.pegAfterEdge)
+                AddStyle(game, "LUCKY BOUNCE", LUCKY_BOUNCE_POINTS, ball.x, ball.y);
+
+            // Mad Skillz, bucket shots in a row. A shot that goes straight in without touching a peg doesn't count and breaks the streak.
+            if (shot.pegsHit == 0)
+            {
+                game.bucketStreak = 0;
+            }
+            else
+            {
+                game.bucketStreak++;
+                if (game.bucketStreak == CRAZY_MAD_SKILLZ_STREAK)
+                {
+                    AddStyle(game, "CRAZY MAD SKILLZ", CRAZY_MAD_SKILLZ_POINTS, ball.x, ball.y);
+                    game.bucketStreak = 0;
+                }
+                else if (game.bucketStreak == MAD_SKILLZ_STREAK)
+                {
+                    AddStyle(game, "MAD SKILLZ", MAD_SKILLZ_POINTS, ball.x, ball.y);
+                }
+            }
+
             game.ballsLeft++;
             game.freeBall = true;
             return;
@@ -902,6 +962,9 @@ static void FinishShot(GameState& game, std::vector<Peg>& pegs, Popup& popup)
         // The purple peg moves for the next shot
         MovePurplePeg(pegs);
     }
+
+    // Any shot that didn't land in the bucket ends the Mad Skillz streak
+    if (!game.freeBall) game.bucketStreak = 0;
 
     popup.timer = POPUP_TIME;
     game.shotInProgress = false;
