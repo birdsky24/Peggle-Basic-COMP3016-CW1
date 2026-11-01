@@ -14,6 +14,8 @@ enum class Sfx
     Shoot,
     Applause,
     StyleShot,
+    PurplePeg,
+    SlowMotion,
     Count
 };
 

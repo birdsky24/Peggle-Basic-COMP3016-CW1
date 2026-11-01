@@ -37,6 +37,10 @@
           "SelectedChildIndex": 5,
           "Children": [
             {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{1c4feeaa-4718-4aa9-859d-94ce25d182ba}"
+            },
+            {
               "$type": "Document",
               "DocumentIndex": 1,
               "Title": "Audio.cpp",
@@ -44,14 +48,10 @@
               "RelativeDocumentMoniker": "Audio.cpp",
               "ToolTip": "D:\\School Work\\COMP3016\\Peggle-Basic-COMP3016-CW1\\CW1-Peggle-Basic\\Audio.cpp",
               "RelativeToolTip": "Audio.cpp",
-              "ViewState": "AgIAAKIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "ViewState": "AgIAAKQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
               "WhenOpened": "2026-11-01T17:58:19.493Z",
               "EditorCaption": ""
-            },
-            {
-              "$type": "Bookmark",
-              "Name": "ST:0:0:{1c4feeaa-4718-4aa9-859d-94ce25d182ba}"
             },
             {
               "$type": "Document",
@@ -100,7 +100,7 @@
               "RelativeDocumentMoniker": "Config.h",
               "ToolTip": "D:\\School Work\\COMP3016\\Peggle-Basic-COMP3016-CW1\\CW1-Peggle-Basic\\Config.h",
               "RelativeToolTip": "Config.h",
-              "ViewState": "AgIAAGYAAAAAAAAAAAAAABkAAAAqAAAAAAAAAA==",
+              "ViewState": "AgIAAEUAAAAAAAAAAIAwwFoAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000680|",
               "WhenOpened": "2026-10-31T13:10:01.843Z",
               "EditorCaption": ""
@@ -113,7 +113,7 @@
               "RelativeDocumentMoniker": "main.cpp",
               "ToolTip": "D:\\School Work\\COMP3016\\Peggle-Basic-COMP3016-CW1\\CW1-Peggle-Basic\\main.cpp",
               "RelativeToolTip": "main.cpp",
-              "ViewState": "AgIAAHcFAAAAAAAAAIAwwJEFAAAzAAAAAAAAAA==",
+              "ViewState": "AgIAAJUFAAAAAAAAAIAwwK8FAAAzAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
               "WhenOpened": "2026-10-30T01:58:05.547Z",
               "EditorCaption": ""

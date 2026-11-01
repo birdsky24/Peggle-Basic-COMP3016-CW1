@@ -86,7 +86,8 @@ constexpr int   ULTRA_BUCKET_POINTS = 100000; // every bucket is worth this if e
 constexpr int   UNUSED_BALL_POINTS = 10000;
 constexpr float FEVER_CIRCLE_RADIUS = 30.0f;
 constexpr float FEVER_CIRCLE_Y = PLAY_BOTTOM - 20.0f;
-constexpr float FEVER_SLOWMO = 0.3f; // 1.0 = normal speed
+constexpr float FEVER_SLOWMO = 0.05f; // speed of time while it is slowed, 1.0 = normal speed
+constexpr float SLOWMO_TRIGGER_DISTANCE = 90.0f; // time slows when the ball is this close to the last orange peg and heading for it
 
 // Popup shown at the end of each shot
 constexpr float POPUP_TIME = 1.5f; // seconds
@@ -136,15 +137,17 @@ constexpr float GAME_SPEED_FAST = 3.0f;
 // Sounds. Every file is looked for in the folder the game is run from. These are placeholder names, change them to match
 // your mp3 files. A file that is missing is skipped (a message is written to the log), so they can be added one at a time.
 constexpr const char* SOUND_BUTTON_CLICK = "sounds/button_click.mp3"; // clicking a button in a menu
-constexpr const char* SOUND_PEG_HIT = "sounds/peg_hit.mp3";           // the ball hits a peg, higher each peg in the shot
+constexpr const char* SOUND_PEG_HIT = "sounds/peg_hit.ogg";           // the ball hits a peg, higher each peg in the shot
 constexpr const char* SOUND_PEG_REMOVE = "sounds/peg_remove.mp3";     // a hit peg is deleted
-constexpr const char* SOUND_FREE_BALL = "sounds/free_ball.mp3";       // bucket, score threshold or winning the 50/50
-constexpr const char* SOUND_ROULETTE_SPIN = "sounds/roulette_spin.mp3"; // loops while the 50/50 numbers swing
-constexpr const char* SOUND_ROULETTE_LOSE = "sounds/roulette_lose.mp3";
+constexpr const char* SOUND_FREE_BALL = "sounds/free_ball.ogg";       // bucket, score threshold or winning the 50/50
+constexpr const char* SOUND_ROULETTE_SPIN = "sounds/roulette_spin.ogg"; // loops while the 50/50 numbers swing
+constexpr const char* SOUND_ROULETTE_LOSE = "sounds/roulette_lose.ogg";
 constexpr const char* SOUND_ROULETTE_WIN = "sounds/roulette_win.mp3";
 constexpr const char* SOUND_SHOOT = "sounds/shoot.mp3";               // the ball is fired
 constexpr const char* SOUND_APPLAUSE = "sounds/applause.mp3";         // the last orange peg is hit
 constexpr const char* SOUND_STYLE_SHOT = "sounds/style_shot.mp3";     // any style shot
+constexpr const char* SOUND_PURPLE_PEG = "sounds/purple_peg.mp3";     // the ball hits the purple peg
+constexpr const char* SOUND_SLOW_MOTION = "sounds/slow_motion.mp3";   // time slows down just before the last orange peg is hit
 constexpr const char* MUSIC_BACKGROUND = "sounds/background_music.mp3"; // loops in the menus and while playing
 constexpr const char* MUSIC_FEVER = "sounds/extreme_fever.mp3";       // loops during extreme fever
 

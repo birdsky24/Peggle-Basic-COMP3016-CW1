@@ -39,6 +39,8 @@ namespace
         case Sfx::Shoot:        return SOUND_SHOOT;
         case Sfx::Applause:     return SOUND_APPLAUSE;
         case Sfx::StyleShot:    return SOUND_STYLE_SHOT;
+        case Sfx::PurplePeg:    return SOUND_PURPLE_PEG;
+        case Sfx::SlowMotion:   return SOUND_SLOW_MOTION;
         default:                return "";
         }
     }

@@ -82,6 +82,9 @@ struct GameState
     int bucketPoints = 0;
     bool levelComplete = false;
     bool freeBall = false; // this shot was caught by the bucket
+    bool approachingLastOrange = false; // the ball is close to the last orange peg and heading for it
+    bool slowmoTriggered = false; // the slow motion sound has played this shot
+    float timeScale = 1.0f; // how fast time is running, 1 is normal
     int bucketStreak = 0; // bucket shots in a row, for Mad Skillz
     Roulette roulette;
     float bucketTime = BUCKET_SWEEP_TIME * 0.5f; // time through the bucket's back and forth movement
@@ -728,6 +731,30 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
         ball.vy = std::fabs(ball.vy) * WALL_BOUNCE;
     }
 
+    // Time slows down just before the ball hits the last orange peg
+    game.approachingLastOrange = false;
+    if (!game.feverActive && game.totalOrange > 0 && game.orangeHit == game.totalOrange - 1)
+    {
+        const float speed = std::sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+        for (const Peg& peg : pegs)
+        {
+            if (peg.removed || peg.hit || peg.type != PegType::Orange) continue;
+            const float toX = peg.x - ball.x;
+            const float toY = peg.y - ball.y;
+            const float dist = std::sqrt(toX * toX + toY * toY);
+            if (dist < 0.001f || speed < 1.0f || dist > SLOWMO_TRIGGER_DISTANCE) continue;
+
+            // Only when the ball is travelling towards the peg (within about 37 degrees of it)
+            if ((ball.vx * toX + ball.vy * toY) / (speed * dist) > 0.8f)
+                game.approachingLastOrange = true;
+        }
+    }
+    if (game.approachingLastOrange && !game.slowmoTriggered)
+    {
+        game.slowmoTriggered = true;
+        PlaySfx(Sfx::SlowMotion);
+    }
+
     // If the ball overlaps with a peg it is pushed back
     for (int i = 0; i < static_cast<int>(pegs.size()); ++i)
     {
@@ -801,6 +828,8 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
             shot.pegsHit++;
             AddPegPopup(game, peg, pegPoints);
             PlaySfx(Sfx::PegHit, std::min((shot.pegsHit - 1) * PEG_HIT_PITCH_STEP, PEG_HIT_PITCH_MAX));
+            if (peg.type == PegType::Purple)
+                PlaySfx(Sfx::PurplePeg);
             CheckFreeBalls(game);
 
             // Orange Attack, this orange peg filled a multiplier stage and the whole stage was hit in this shot
@@ -1381,6 +1410,7 @@ int main(int argc, char* argv[])
                         game.shot = ShotStats();
                         game.shot.orangeAtStart = game.orangeHit;
                         game.freeBall = false;
+                        game.slowmoTriggered = false;
                     }
                 }
                 else
@@ -1494,9 +1524,17 @@ int main(int argc, char* argv[])
         }
 
         // ---- Update (fixed timestep) ----
-        // Time slows down while the shot is in extreme fever
-        const float timeScale = (game.feverActive && ball.active) ? FEVER_SLOWMO : 1.0f;
-        accumulator += frameDt * timeScale;
+        // Time slows just before the last orange peg is hit and goes back to normal as soon as it is hit
+        if (ball.active)
+        {
+            game.timeScale = (!game.feverActive && game.approachingLastOrange) ? FEVER_SLOWMO : 1.0f;
+        }
+        else
+        {
+            game.timeScale = 1.0f;
+            game.approachingLastOrange = false;
+        }
+        accumulator += frameDt * game.timeScale;
         while (accumulator >= PHYSICS_STEP)
         {
             UpdateBucket(game, PHYSICS_STEP);
