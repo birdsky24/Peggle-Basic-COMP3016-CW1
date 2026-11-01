@@ -3,12 +3,16 @@
   "WorkspaceRootPath": "D:\\School Work\\COMP3016\\Peggle-Basic-COMP3016-CW1\\CW1-Peggle-Basic\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{A89105DE-5D46-498D-B98D-84FA394421E3}|CW1-Peggle-Basic.vcxproj|D:\\School Work\\COMP3016\\Peggle-Basic-COMP3016-CW1\\CW1-Peggle-Basic\\Config.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
-      "RelativeMoniker": "D:0:0:{A89105DE-5D46-498D-B98D-84FA394421E3}|CW1-Peggle-Basic.vcxproj|solutionrelative:Config.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+      "AbsoluteMoniker": "D:0:0:{A89105DE-5D46-498D-B98D-84FA394421E3}|CW1-Peggle-Basic.vcxproj|D:\\School Work\\COMP3016\\Peggle-Basic-COMP3016-CW1\\CW1-Peggle-Basic\\Level.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{A89105DE-5D46-498D-B98D-84FA394421E3}|CW1-Peggle-Basic.vcxproj|solutionrelative:Level.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{A89105DE-5D46-498D-B98D-84FA394421E3}|CW1-Peggle-Basic.vcxproj|D:\\School Work\\COMP3016\\Peggle-Basic-COMP3016-CW1\\CW1-Peggle-Basic\\main.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
       "RelativeMoniker": "D:0:0:{A89105DE-5D46-498D-B98D-84FA394421E3}|CW1-Peggle-Basic.vcxproj|solutionrelative:main.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A89105DE-5D46-498D-B98D-84FA394421E3}|CW1-Peggle-Basic.vcxproj|D:\\School Work\\COMP3016\\Peggle-Basic-COMP3016-CW1\\CW1-Peggle-Basic\\Config.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{A89105DE-5D46-498D-B98D-84FA394421E3}|CW1-Peggle-Basic.vcxproj|solutionrelative:Config.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{A89105DE-5D46-498D-B98D-84FA394421E3}|CW1-Peggle-Basic.vcxproj|D:\\School Work\\COMP3016\\Peggle-Basic-COMP3016-CW1\\CW1-Peggle-Basic\\Level.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
@@ -17,10 +21,6 @@
     {
       "AbsoluteMoniker": "D:0:0:{A89105DE-5D46-498D-B98D-84FA394421E3}|CW1-Peggle-Basic.vcxproj|D:\\School Work\\COMP3016\\Peggle-Basic-COMP3016-CW1\\CW1-Peggle-Basic\\Peg.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
       "RelativeMoniker": "D:0:0:{A89105DE-5D46-498D-B98D-84FA394421E3}|CW1-Peggle-Basic.vcxproj|solutionrelative:Peg.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{A89105DE-5D46-498D-B98D-84FA394421E3}|CW1-Peggle-Basic.vcxproj|D:\\School Work\\COMP3016\\Peggle-Basic-COMP3016-CW1\\CW1-Peggle-Basic\\Level.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
-      "RelativeMoniker": "D:0:0:{A89105DE-5D46-498D-B98D-84FA394421E3}|CW1-Peggle-Basic.vcxproj|solutionrelative:Level.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
     }
   ],
   "DocumentGroupContainers": [
@@ -30,7 +30,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 4,
+          "SelectedChildIndex": 3,
           "Children": [
             {
               "$type": "Bookmark",
@@ -38,7 +38,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 4,
               "Title": "Peg.h",
               "DocumentMoniker": "D:\\School Work\\COMP3016\\Peggle-Basic-COMP3016-CW1\\CW1-Peggle-Basic\\Peg.h",
               "RelativeDocumentMoniker": "Peg.h",
@@ -51,7 +51,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 3,
               "Title": "Level.h",
               "DocumentMoniker": "D:\\School Work\\COMP3016\\Peggle-Basic-COMP3016-CW1\\CW1-Peggle-Basic\\Level.h",
               "RelativeDocumentMoniker": "Level.h",
@@ -64,7 +64,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 4,
+              "DocumentIndex": 0,
               "Title": "Level.cpp",
               "DocumentMoniker": "D:\\School Work\\COMP3016\\Peggle-Basic-COMP3016-CW1\\CW1-Peggle-Basic\\Level.cpp",
               "RelativeDocumentMoniker": "Level.cpp",
@@ -77,7 +77,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 2,
               "Title": "Config.h",
               "DocumentMoniker": "D:\\School Work\\COMP3016\\Peggle-Basic-COMP3016-CW1\\CW1-Peggle-Basic\\Config.h",
               "RelativeDocumentMoniker": "Config.h",
@@ -96,7 +96,7 @@
               "RelativeDocumentMoniker": "main.cpp",
               "ToolTip": "D:\\School Work\\COMP3016\\Peggle-Basic-COMP3016-CW1\\CW1-Peggle-Basic\\main.cpp",
               "RelativeToolTip": "main.cpp",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAIIFAAAJAAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAMEFAAAJAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
               "WhenOpened": "2026-10-30T01:58:05.547Z",
               "EditorCaption": ""

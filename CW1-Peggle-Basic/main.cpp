@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -59,6 +60,15 @@ struct ShotStats
     bool edgeSincePeg = false; // the last thing the ball bounced off was the bucket edge
 };
 
+// The 50/50 pop-up shown after a shot that hit nothing and missed the bucket
+struct Roulette
+{
+    bool active = false;
+    bool returned = false; // the result, decided when the shot ends
+    bool revealed = false; // the shot has been given back (if it was going to be)
+    float timer = 0.0f;
+};
+
 struct GameState
 {
     long long score = 0;
@@ -72,6 +82,7 @@ struct GameState
     bool levelComplete = false;
     bool freeBall = false; // this shot was caught by the bucket
     int bucketStreak = 0; // bucket shots in a row, for Mad Skillz
+    Roulette roulette;
     float bucketTime = BUCKET_SWEEP_TIME * 0.5f; // time through the bucket's back and forth movement
     float bucketX = LAUNCHER_X; // centre of the bucket
     ShotStats shot;
@@ -133,6 +144,7 @@ static const SDL_Color COL_YELLOW = { 255, 225, 40, 255 };
 static const SDL_Color COL_ORANGE = { 255, 150, 30, 255 };
 static const SDL_Color COL_GREEN  = { 90, 240, 90, 255 };
 static const SDL_Color COL_CYAN   = { 120, 230, 235, 255 };
+static const SDL_Color COL_RED    = { 240, 70, 60, 255 };
 
 static void DrawFilledCircle(SDL_Renderer* r, float cx, float cy, float radius)
 {
@@ -916,6 +928,13 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
     }
 }
 
+// Random numbers for the 50/50
+static std::mt19937& GameRng()
+{
+    static std::mt19937 rng{ std::random_device{}() };
+    return rng;
+}
+
 // Works out the score for the shot that just finished and fills in the popup
 static void FinishShot(GameState& game, std::vector<Peg>& pegs, Popup& popup)
 {
@@ -966,7 +985,20 @@ static void FinishShot(GameState& game, std::vector<Peg>& pegs, Popup& popup)
     // Any shot that didn't land in the bucket ends the Mad Skillz streak
     if (!game.freeBall) game.bucketStreak = 0;
 
-    popup.timer = POPUP_TIME;
+    // A shot that hit nothing and missed the bucket gets a 50/50 to be given back, instead of the normal pop-up
+    const bool fullMiss = (shot.pegsHit == 0 && !game.freeBall && !game.feverActive);
+    if (fullMiss)
+    {
+        game.roulette = Roulette();
+        game.roulette.active = true;
+        game.roulette.returned = std::uniform_int_distribution<int>(0, 1)(GameRng()) == 1;
+        popup.lines.clear();
+        popup.timer = 0.0f;
+    }
+    else
+    {
+        popup.timer = POPUP_TIME;
+    }
     game.shotInProgress = false;
 }
 
@@ -1104,6 +1136,76 @@ static void DrawBallMeter(SDL_Renderer* r, const GameState& game, bool live)
     SDL_SetRenderDrawColor(r, 230, 230, 240, 255);
     for (int i = 0; i < n; ++i)
         DrawFilledCircle(r, cx, firstY - i * pitch, STACK_BALL_RADIUS);
+}
+
+// The chance (0 to 100) shown for RETURN. It starts at 50 and swings further each time, ending on 100 (returned) or 0 (lost).
+static int RouletteReturnChance(float t, bool returned)
+{
+    const float p = std::min(1.0f, t / ROULETTE_SPIN_TIME);
+    const float omega = (returned ? 2.5f : 3.5f) * SDL_PI_F;
+    const float swing = p * std::sin(omega * p); // grows from 0 to +1 or -1
+    const int chance = static_cast<int>(std::lround(50.0f + 50.0f * swing));
+    return std::max(0, std::min(chance, 100));
+}
+
+// "RETURN 50/50 LOSE" in the middle of the screen
+static void DrawRoulette(SDL_Renderer* r, const Roulette& roulette)
+{
+    const float t = roulette.timer;
+    const int chance = RouletteReturnChance(t, roulette.returned);
+    const bool done = (t >= ROULETTE_SPIN_TIME);
+
+    // Fades out at the end, and the side that lost is dimmed once the result is in
+    const float fade = std::max(0.0f, std::min(1.0f, (ROULETTE_TIME - t) / POPUP_FADE_TIME));
+    const Uint8 full = static_cast<Uint8>(255.0f * fade);
+    const Uint8 dim = static_cast<Uint8>(110.0f * fade);
+    const Uint8 returnAlpha = (done && !roulette.returned) ? dim : full;
+    const Uint8 loseAlpha = (done && roulette.returned) ? dim : full;
+
+    // Layout: RETURN [number] / [number] LOSE, with fixed width gaps so the words don't move as the numbers change
+    const float scale = 4.0f;
+    const float cw = 8.0f * scale;
+    const float leftExtent = cw / 2.0f + 3.0f * cw + cw / 2.0f + 6.0f * cw;  // slash, number, gap, RETURN
+    const float rightExtent = cw / 2.0f + 3.0f * cw + cw / 2.0f + 4.0f * cw; // slash, number, gap, LOSE
+    const float x0 = LAUNCHER_X - (leftExtent + rightExtent) / 2.0f;
+    const float slashX = x0 + leftExtent; // centre of the slash
+    const float y = (PLAY_TOP + PLAY_BOTTOM) / 2.0f - 50.0f;
+
+    const std::string leftNum = std::to_string(chance);
+    const std::string rightNum = std::to_string(100 - chance);
+
+    DrawOutlinedText(r, "RETURN", x0, y, scale, COL_GREEN, returnAlpha);
+    DrawOutlinedText(r, leftNum, slashX - cw / 2.0f - TextWidth(leftNum, scale), y, scale, COL_WHITE, returnAlpha);
+    DrawOutlinedText(r, "/", slashX - cw / 2.0f, y, scale, COL_WHITE, full);
+    DrawOutlinedText(r, rightNum, slashX + cw / 2.0f, y, scale, COL_WHITE, loseAlpha);
+    DrawOutlinedText(r, "LOSE", slashX + cw / 2.0f + 3.0f * cw + cw / 2.0f, y, scale, COL_RED, loseAlpha);
+
+    // A bar underneath showing the same split
+    const float barW = 400.0f;
+    const float barH = 14.0f;
+    const float barX = LAUNCHER_X - barW / 2.0f;
+    const float barY = y + cw + 14.0f;
+    const float greenW = barW * static_cast<float>(chance) / 100.0f;
+
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
+    const SDL_FRect outline = { barX - 2.0f, barY - 2.0f, barW + 4.0f, barH + 4.0f };
+    SDL_SetRenderDrawColor(r, 0, 0, 0, full);
+    SDL_RenderFillRect(r, &outline);
+    const SDL_FRect green = { barX, barY, greenW, barH };
+    SDL_SetRenderDrawColor(r, COL_GREEN.r, COL_GREEN.g, COL_GREEN.b, returnAlpha);
+    SDL_RenderFillRect(r, &green);
+    const SDL_FRect red = { barX + greenW, barY, barW - greenW, barH };
+    SDL_SetRenderDrawColor(r, COL_RED.r, COL_RED.g, COL_RED.b, loseAlpha);
+    SDL_RenderFillRect(r, &red);
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
+
+    // The result, once the numbers have settled
+    if (done)
+    {
+        const std::string result = roulette.returned ? "SHOT RETURNED!" : "SHOT LOST";
+        const SDL_Color col = roulette.returned ? COL_CYAN : SDL_Color{ 200, 200, 210, 255 };
+        DrawOutlinedText(r, result, LAUNCHER_X - TextWidth(result, 3.0f) / 2.0f, barY + barH + 22.0f, 3.0f, col, full);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1260,7 +1362,7 @@ int main(int argc, char* argv[])
 
                 if (screen == Screen::Playing)
                 {
-                    if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete)
+                    if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete && !game.roulette.active)
                     {
                         float dirX, dirY;
                         GetAimDirection(mouseX, mouseY, dirX, dirY);
@@ -1353,6 +1455,19 @@ int main(int argc, char* argv[])
                                            [](const FloatingText& f) { return f.timer <= 0.0f; }),
                             game.floaters.end());
 
+        // The 50/50 swings for a while, then the shot is given back (or not), then the pop-up goes away
+        if (game.roulette.active)
+        {
+            Roulette& rl = game.roulette;
+            rl.timer += frameDt;
+            if (!rl.revealed && rl.timer >= ROULETTE_SPIN_TIME)
+            {
+                rl.revealed = true;
+                if (rl.returned) game.ballsLeft++;
+            }
+            if (rl.timer >= ROULETTE_TIME) rl.active = false;
+        }
+
         // ---- Update (fixed timestep) ----
         // Time slows down while the shot is in extreme fever
         const float timeScale = (game.feverActive && ball.active) ? FEVER_SLOWMO : 1.0f;
@@ -1393,7 +1508,7 @@ int main(int argc, char* argv[])
             popup.timer -= frameDt;
 
         // Once the shot popup is gone, check if the level is cleared or out of shots
-        if (screen == Screen::Playing && !game.shotInProgress && !ball.active && hitOrder.empty() && popup.timer <= 0.0f)
+        if (screen == Screen::Playing && !game.shotInProgress && !ball.active && hitOrder.empty() && popup.timer <= 0.0f && !game.roulette.active)
         {
             if (game.levelComplete) screen = Screen::LevelClear;
             else if (game.ballsLeft <= 0) screen = Screen::Fail;
@@ -1466,7 +1581,7 @@ int main(int argc, char* argv[])
         DrawFilledCircle(renderer, LAUNCHER_X, LAUNCHER_Y, 14.0f);
 
         // Aim guide only shows when no ball is in play and the hit pegs are deleted
-        if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete)
+        if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete && !game.roulette.active)
         {
             float dirX, dirY;
             GetAimDirection(mouseX, mouseY, dirX, dirY);
@@ -1529,6 +1644,10 @@ int main(int argc, char* argv[])
         // Popup with the points for the shot
         if (popup.timer > 0.0f && !popup.lines.empty())
             DrawShotPopup(renderer, popup);
+
+        // 50/50 for a shot that hit nothing
+        if (game.roulette.active)
+            DrawRoulette(renderer, game.roulette);
 
         // Pause, fail and level clear pop-ups, drawn over the level
         if (screen == Screen::Paused || screen == Screen::Fail || screen == Screen::LevelClear)

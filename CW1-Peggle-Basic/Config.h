@@ -92,6 +92,10 @@ constexpr float FEVER_SLOWMO = 0.3f; // 1.0 = normal speed
 constexpr float POPUP_TIME = 1.5f; // seconds
 constexpr float POPUP_FADE_TIME = 0.3f; // it fades out over the last bit of POPUP_TIME
 
+// 50/50 for a shot that hits nothing, a missed shot gets one more go or is lost
+constexpr float ROULETTE_TIME = 2.0f; // seconds the whole pop-up is on screen
+constexpr float ROULETTE_SPIN_TIME = 1.5f; // seconds the numbers swing before the result is shown
+
 // Small pop-ups that appear next to a peg in the play area
 constexpr float PEG_POPUP_TIME = 0.1f; // seconds the points for a peg stay on screen
 constexpr float PEG_POPUP_SCALE = 2.0f;
