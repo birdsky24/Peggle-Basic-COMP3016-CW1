@@ -120,7 +120,7 @@ constexpr int   METER_SEGMENT_GAP = 3;
 
 // Leaderboard
 constexpr const char* LEADERBOARD_FILE = "leaderboard.txt"; // saved next to where the game is run from
-constexpr int   LEADERBOARD_ROWS = 8; // scores shown on the main menu
+constexpr int   LEADERBOARD_SCORES_PER_LEVEL = 10; // best scores kept for each level, lower ones are deleted from the file
 
 // Moving bucket at the bottom, the rectangle catches the shot and the triangles either side bounce it
 constexpr float BUCKET_WIDTH = (PLAY_RIGHT - PLAY_LEFT) / 5.0f; // the rectangle is 1/5 of the play area
@@ -143,8 +143,8 @@ constexpr const char* SOUND_FREE_BALL = "sounds/free_ball.ogg";       // catchin
 constexpr const char* SOUND_FREE_BALL_1 = "sounds/free_ball_1.ogg";   // the shot's score reaches the 1st free ball (25,000)
 constexpr const char* SOUND_FREE_BALL_2 = "sounds/free_ball_2.ogg";   // the 2nd free ball (75,000)
 constexpr const char* SOUND_FREE_BALL_3 = "sounds/free_ball_3.ogg";   // the 3rd free ball (125,000)
-constexpr const char* SOUND_FEVER_BUCKET = "sounds/fireworks1.ogg"; // the shot lands in one of the 10,000 or 50,000 extreme fever buckets
-constexpr const char* SOUND_FEVER_BUCKET_TOP = "sounds/fireworks2.ogg"; // the shot lands in a 100,000 bucket
+constexpr const char* SOUND_FEVER_BUCKET = "sounds/fever_bucket.ogg"; // the shot lands in one of the 10,000 or 50,000 extreme fever buckets
+constexpr const char* SOUND_FEVER_BUCKET_TOP = "sounds/fever_bucket_top.ogg"; // the shot lands in a 100,000 bucket
 constexpr const char* SOUND_ROULETTE_SPIN = "sounds/roulette_spin.ogg"; // loops while the 50/50 numbers swing
 constexpr const char* SOUND_ROULETTE_LOSE = "sounds/roulette_lose.ogg";
 constexpr const char* SOUND_ROULETTE_WIN = "sounds/free_ball.ogg";

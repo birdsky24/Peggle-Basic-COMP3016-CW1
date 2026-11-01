@@ -1486,25 +1486,66 @@ int main(int argc, char* argv[])
             const float hoverY = levelSelectOpen ? -1.0f : mouseY;
             DrawButtons(renderer, GetScreenButtons(screen, currentLevel, LevelCount(), false, false), hoverX, hoverY);
 
-            // Leaderboard, read from the file
+            // Leaderboard, read from the file. One row for each level showing its best score,
+            // hover over a row to see that level's best scores
             SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
             DrawText(renderer, "LEADERBOARD", 400.0f, 120.0f, 2.0f);
-            if (scores.empty())
+
+            int hoveredLevel = 0;
+            for (int level = 1; level <= LevelCount(); ++level)
             {
+                const float y = 160.0f + (level - 1) * 26.0f;
+                const SDL_FRect row = { 395.0f, y - 4.0f, 370.0f, 24.0f };
+                const std::vector<ScoreEntry> levelScores = ScoresForLevel(scores, level);
+
+                if (!levelSelectOpen && PointInRect(mouseX, mouseY, row))
+                {
+                    hoveredLevel = level;
+                    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+                    SDL_SetRenderDrawColor(renderer, 80, 110, 170, 120);
+                    SDL_RenderFillRect(renderer, &row);
+                    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+                }
+
                 SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
-                DrawText(renderer, "NO SCORES YET", 400.0f, 160.0f, 2.0f);
+                DrawText(renderer, "LEVEL " + std::to_string(level), 400.0f, y, 2.0f);
+                if (levelScores.empty())
+                {
+                    DrawText(renderer, "NO SCORES YET", 760.0f - TextWidth("NO SCORES YET", 2.0f), y, 2.0f);
+                }
+                else
+                {
+                    const std::string scoreText = FormatNumber(levelScores[0].score);
+                    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                    DrawText(renderer, levelScores[0].name, 530.0f, y, 2.0f);
+                    DrawText(renderer, scoreText, 760.0f - TextWidth(scoreText, 2.0f), y, 2.0f);
+                }
             }
-            for (int i = 0; i < static_cast<int>(scores.size()) && i < LEADERBOARD_ROWS; ++i)
+
+            // The best scores for the level that is being hovered over
+            if (hoveredLevel > 0)
             {
-                const float y = 160.0f + i * 26.0f;
-                const std::string scoreText = FormatNumber(scores[i].score);
-                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-                DrawText(renderer, std::to_string(i + 1) + ".", 400.0f, y, 2.0f);
-                DrawText(renderer, scores[i].name, 440.0f, y, 2.0f);
-                SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
-                DrawText(renderer, "L" + std::to_string(scores[i].level), 520.0f, y, 2.0f);
-                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-                DrawText(renderer, scoreText, 760.0f - TextWidth(scoreText, 2.0f), y, 2.0f);
+                const std::vector<ScoreEntry> levelScores = ScoresForLevel(scores, hoveredLevel);
+                if (!levelScores.empty())
+                {
+                    const float rowY = 160.0f + (hoveredLevel - 1) * 26.0f;
+                    const float h = 44.0f + levelScores.size() * 22.0f;
+                    const SDL_FRect panel = { 395.0f, std::min(rowY + 28.0f, WINDOW_H - 10.0f - h), 370.0f, h };
+                    DrawPanel(renderer, panel);
+
+                    SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
+                    DrawText(renderer, "LEVEL " + std::to_string(hoveredLevel) + " BEST SCORES", panel.x + 10.0f, panel.y + 10.0f, 2.0f);
+                    for (size_t i = 0; i < levelScores.size(); ++i)
+                    {
+                        const float y = panel.y + 38.0f + i * 22.0f;
+                        const std::string scoreText = FormatNumber(levelScores[i].score);
+                        SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
+                        DrawText(renderer, std::to_string(i + 1) + ".", panel.x + 10.0f, y, 2.0f);
+                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                        DrawText(renderer, levelScores[i].name, panel.x + 70.0f, y, 2.0f);
+                        DrawText(renderer, scoreText, panel.x + panel.w - 10.0f - TextWidth(scoreText, 2.0f), y, 2.0f);
+                    }
+                }
             }
 
             if (levelSelectOpen)
