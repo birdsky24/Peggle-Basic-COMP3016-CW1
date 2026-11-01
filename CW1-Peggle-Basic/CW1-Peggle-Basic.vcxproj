@@ -31,6 +31,9 @@
     <ClInclude Include="Level.h" />
     <ClInclude Include="Peg.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="leaderboard.dat" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
