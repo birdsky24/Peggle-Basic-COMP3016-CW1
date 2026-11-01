@@ -1261,6 +1261,37 @@ static void DrawRoulette(SDL_Renderer* r, const Roulette& roulette)
     }
 }
 
+// A box in the top border, drawn the same way as the menu buttons
+static void DrawHudBox(SDL_Renderer* r, const SDL_FRect& box, const std::string& text)
+{
+    SDL_SetRenderDrawColor(r, 45, 60, 100, 255);
+    SDL_RenderFillRect(r, &box);
+    SDL_SetRenderDrawColor(r, 200, 200, 210, 255);
+    SDL_RenderRect(r, &box);
+
+    SDL_SetRenderDrawColor(r, 255, 255, 255, 255);
+    DrawText(r, text, box.x + (box.w - TextWidth(text, 2.0f)) / 2.0f, box.y + (box.h - 16.0f) / 2.0f, 2.0f);
+}
+
+// The top border: the level on the left and the total score on the right
+static void DrawTopHud(SDL_Renderer* r, int level, long long score)
+{
+    const float margin = 8.0f;
+    const float boxY = 8.0f;
+    const float boxH = 34.0f;
+    const float padding = 12.0f;
+
+    const std::string levelText = "LEVEL " + std::to_string(level);
+    const std::string scoreText = "SCORE " + FormatNumber(score);
+
+    // The boxes have a minimum width so they don't keep changing size, and grow if the text needs more room
+    const float levelW = std::max(TextWidth("LEVEL 99", 2.0f), TextWidth(levelText, 2.0f)) + 2.0f * padding;
+    const float scoreW = std::max(TextWidth("SCORE 0,000,000", 2.0f), TextWidth(scoreText, 2.0f)) + 2.0f * padding;
+
+    DrawHudBox(r, { margin, boxY, levelW, boxH }, levelText);
+    DrawHudBox(r, { WINDOW_W - margin - scoreW, boxY, scoreW, boxH }, scoreText);
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -1737,12 +1768,8 @@ int main(int argc, char* argv[])
         };
         SDL_RenderFillRects(renderer, borders, 4);
 
-        // Total score, top right
-        const std::string scoreText = FormatNumber(game.score);
-        SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
-        DrawText(renderer, "SCORE", WINDOW_W - 10.0f - TextWidth("SCORE", 1.0f), 8.0f, 1.0f);
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        DrawText(renderer, scoreText, WINDOW_W - 10.0f - TextWidth(scoreText, 2.0f), 22.0f, 2.0f);
+        // Level in the top left and total score in the top right
+        DrawTopHud(renderer, currentLevel, game.score);
 
         // Balls left stacked up in the left border with the free ball bars either side
         DrawBallMeter(renderer, game, game.shotInProgress || popup.timer > 0.0f);
