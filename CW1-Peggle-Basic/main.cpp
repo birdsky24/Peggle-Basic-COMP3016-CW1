@@ -1224,7 +1224,7 @@ int main(int argc, char* argv[])
 
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
-    if (!SDL_CreateWindowAndRenderer("Peggle Clone", WINDOW_W, WINDOW_H, 0, &window, &renderer))
+    if (!SDL_CreateWindowAndRenderer("Peggle Basic", WINDOW_W, WINDOW_H, 0, &window, &renderer))
     {
         SDL_Log("Window/renderer creation failed: %s", SDL_GetError());
         SDL_Quit();
@@ -1408,7 +1408,7 @@ int main(int argc, char* argv[])
             SDL_SetRenderDrawColor(renderer, 20, 24, 40, 255);
             SDL_RenderClear(renderer);
 
-            const std::string title = "PEGGLE CLONE";
+            const std::string title = "PEGGLE BASIC";
             SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
             DrawText(renderer, title, LAUNCHER_X - TextWidth(title, 4.0f) / 2.0f, 40.0f, 4.0f);
 

@@ -73,7 +73,7 @@ static std::vector<Peg> BuildLevel2()
 {
     constexpr int   rows = 12;
     constexpr float spacing = 40.0f;
-    constexpr float gridTop = 180.0f;
+    constexpr float gridTop = 100.0f;
 
     std::vector<Peg> pegs;
     for (int row = 0; row < rows; ++row)
