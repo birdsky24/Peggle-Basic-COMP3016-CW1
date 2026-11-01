@@ -465,7 +465,7 @@ static void GetAimDirection(float mouseX, float mouseY, float& dirX, float& dirY
 }
 
 // Creates a dotted guide for the shot
-static void DrawAimGuide(SDL_Renderer* r, float dirX, float dirY)
+static void DrawAimGuide(SDL_Renderer* r, const std::vector<Peg>& pegs, float dirX, float dirY)
 {
     float x = LAUNCHER_X;
     float y = LAUNCHER_Y;
@@ -493,6 +493,22 @@ static void DrawAimGuide(SDL_Renderer* r, float dirX, float dirY)
             leftScreen = true;
             break;
         }
+
+        // The guide ends where the ball would touch a peg
+        bool touchingPeg = false;
+        for (const Peg& peg : pegs)
+        {
+            if (peg.removed) continue;
+            const float pdx = x - peg.x;
+            const float pdy = y - peg.y;
+            const float reach = BALL_RADIUS + PEG_RADIUS;
+            if (pdx * pdx + pdy * pdy < reach * reach)
+            {
+                touchingPeg = true;
+                break;
+            }
+        }
+        if (touchingPeg) break;
 
         if (travelled >= nextDot)
         {
@@ -1657,7 +1673,7 @@ int main(int argc, char* argv[])
         {
             float dirX, dirY;
             GetAimDirection(mouseX, mouseY, dirX, dirY);
-            DrawAimGuide(renderer, dirX, dirY);
+            DrawAimGuide(renderer, pegs, dirX, dirY);
         }
 
         // Ball
