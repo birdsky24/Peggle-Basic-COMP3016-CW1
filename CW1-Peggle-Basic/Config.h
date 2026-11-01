@@ -82,3 +82,15 @@ constexpr int   METER_SEGMENT_GAP = 3;
 // Leaderboard
 constexpr const char* LEADERBOARD_FILE = "leaderboard.txt"; // saved next to where the game is run from
 constexpr int   LEADERBOARD_ROWS = 8; // scores shown on the main menu
+
+// Moving bucket at the bottom, the rectangle catches the shot and the triangles either side bounce it
+constexpr float BUCKET_WIDTH = (PLAY_RIGHT - PLAY_LEFT) / 10.0f; // the rectangle is 1/10 of the play area
+constexpr float BUCKET_HEIGHT = 22.0f;
+constexpr float BUCKET_TRI_WIDTH = 36.0f;
+constexpr float BUCKET_TRI_HEIGHT = 30.0f; // a bit taller than the rectangle so it has a rim
+constexpr float BUCKET_SWEEP_TIME = 3.0f; // seconds from one wall to the other, including slowing down at the walls
+constexpr float BUCKET_DWELL_TIME = 0.15f; // how long it is stopped at each wall
+constexpr float BUCKET_RAMP_TIME = 0.6f; // how long it takes to slow down and speed back up at each wall
+
+// Hold the right mouse button to speed the game up
+constexpr float GAME_SPEED_FAST = 3.0f;

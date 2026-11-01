@@ -53,6 +53,9 @@ struct GameState
     bool ultraFever = false;
     int bucketPoints = 0;
     bool levelComplete = false;
+    bool freeBall = false; // this shot was caught by the bucket
+    float bucketTime = BUCKET_SWEEP_TIME * 0.5f; // time through the bucket's back and forth movement
+    float bucketX = LAUNCHER_X; // centre of the bucket
     ShotStats shot;
 };
 
@@ -439,6 +442,133 @@ static void BounceOffCircle(Ball& ball, float cx, float cy, float radius)
     }
 }
 
+struct Triangle
+{
+    SDL_FPoint p[3];
+};
+
+// How far along the sweep the bucket is (0 to 1) after t seconds. It waits a moment at the wall,
+// smoothly speeds up, cruises, then smoothly slows to a stop at the other wall.
+static float BucketProgress(float t)
+{
+    const float dwell = BUCKET_DWELL_TIME;
+    const float ramp = BUCKET_RAMP_TIME;
+    const float cruise = BUCKET_SWEEP_TIME - dwell - 2.0f * ramp;
+    const float total = ramp + cruise; // distance covered, in units of the cruise speed
+
+    // Distance covered while speeding up for u seconds out of ramp (smooth speed curve)
+    auto rampDistance = [](float u) { return u * u * u - u * u * u * u / 2.0f; };
+
+    float d;
+    t -= dwell;
+    if (t <= 0.0f)
+    {
+        d = 0.0f;
+    }
+    else if (t < ramp)
+    {
+        d = ramp * rampDistance(t / ramp);
+    }
+    else if (t < ramp + cruise)
+    {
+        d = ramp * 0.5f + (t - ramp);
+    }
+    else
+    {
+        const float u = std::min(1.0f, (t - ramp - cruise) / ramp);
+        d = ramp * 0.5f + cruise + ramp * (0.5f - rampDistance(1.0f - u));
+    }
+    return d / total;
+}
+
+static void UpdateBucket(GameState& game, float dt)
+{
+    // One full back and forth is two sweeps
+    game.bucketTime += dt;
+    if (game.bucketTime >= 2.0f * BUCKET_SWEEP_TIME)
+        game.bucketTime -= 2.0f * BUCKET_SWEEP_TIME;
+
+    const bool returning = game.bucketTime >= BUCKET_SWEEP_TIME;
+    const float t = returning ? game.bucketTime - BUCKET_SWEEP_TIME : game.bucketTime;
+    float p = BucketProgress(t);
+    if (returning) p = 1.0f - p;
+
+    // The edge of the rectangle touches the wall at each end
+    const float minX = PLAY_LEFT + BUCKET_WIDTH / 2.0f;
+    const float maxX = PLAY_RIGHT - BUCKET_WIDTH / 2.0f;
+    game.bucketX = minX + p * (maxX - minX);
+}
+
+static void GetBucketShape(float centreX, SDL_FRect& rect, Triangle& left, Triangle& right)
+{
+    rect = { centreX - BUCKET_WIDTH / 2.0f, PLAY_BOTTOM - BUCKET_HEIGHT, BUCKET_WIDTH, BUCKET_HEIGHT };
+    const float l = rect.x;
+    const float r = rect.x + rect.w;
+    const float apex = PLAY_BOTTOM - BUCKET_TRI_HEIGHT;
+
+    // Right angle against the side of the rectangle, sloping down away from it
+    left = { { { l, apex }, { l - BUCKET_TRI_WIDTH, PLAY_BOTTOM }, { l, PLAY_BOTTOM } } };
+    right = { { { r, apex }, { r, PLAY_BOTTOM }, { r + BUCKET_TRI_WIDTH, PLAY_BOTTOM } } };
+}
+
+// Pushes the ball out of a triangle and bounces it off the nearest edge
+static void BounceOffTriangle(Ball& ball, const Triangle& tri)
+{
+    // Closest point on the triangle's edges to the ball's centre
+    float bestX = 0.0f, bestY = 0.0f;
+    float bestDistSq = 1.0e30f;
+    for (int i = 0; i < 3; ++i)
+    {
+        const SDL_FPoint a = tri.p[i];
+        const SDL_FPoint b = tri.p[(i + 1) % 3];
+        const float abx = b.x - a.x;
+        const float aby = b.y - a.y;
+        float t = ((ball.x - a.x) * abx + (ball.y - a.y) * aby) / (abx * abx + aby * aby);
+        t = std::max(0.0f, std::min(t, 1.0f));
+        const float qx = a.x + t * abx;
+        const float qy = a.y + t * aby;
+        const float distSq = (ball.x - qx) * (ball.x - qx) + (ball.y - qy) * (ball.y - qy);
+        if (distSq < bestDistSq)
+        {
+            bestDistSq = distSq;
+            bestX = qx;
+            bestY = qy;
+        }
+    }
+
+    // Is the ball's centre inside the triangle
+    float side[3];
+    for (int i = 0; i < 3; ++i)
+    {
+        const SDL_FPoint a = tri.p[i];
+        const SDL_FPoint b = tri.p[(i + 1) % 3];
+        side[i] = (b.x - a.x) * (ball.y - a.y) - (b.y - a.y) * (ball.x - a.x);
+    }
+    const bool inside = (side[0] >= 0.0f && side[1] >= 0.0f && side[2] >= 0.0f) ||
+                        (side[0] <= 0.0f && side[1] <= 0.0f && side[2] <= 0.0f);
+
+    const float dist = std::sqrt(bestDistSq);
+    if (!inside && dist >= BALL_RADIUS) return;
+
+    float nx = 0.0f, ny = -1.0f;
+    if (dist > 0.0001f)
+    {
+        // Normal points away from the triangle, or towards the nearest edge if the centre is inside
+        nx = (inside ? bestX - ball.x : ball.x - bestX) / dist;
+        ny = (inside ? bestY - ball.y : ball.y - bestY) / dist;
+    }
+
+    ball.x = bestX + nx * BALL_RADIUS;
+    ball.y = bestY + ny * BALL_RADIUS;
+
+    const float vn = ball.vx * nx + ball.vy * ny;
+    if (vn < 0.0f)
+    {
+        ball.vx -= (1.0f + PEG_BOUNCE) * vn * nx;
+        ball.vy -= (1.0f + PEG_BOUNCE) * vn * ny;
+    }
+}
+
 // hitOrder holds the index of every peg hit by this shot, in the order they were hit
 static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hitOrder, GameState& game, float dt)
 {
@@ -582,6 +712,25 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
         }
     }
 
+    // The bucket, it goes away during extreme fever
+    if (!game.feverActive)
+    {
+        SDL_FRect bucketRect;
+        Triangle leftTri, rightTri;
+        GetBucketShape(game.bucketX, bucketRect, leftTri, rightTri);
+        BounceOffTriangle(ball, leftTri);
+        BounceOffTriangle(ball, rightTri);
+
+        // Dropping into the rectangle deletes the shot and gives the shot back
+        if (ball.x >= bucketRect.x && ball.x <= bucketRect.x + bucketRect.w && ball.y + BALL_RADIUS >= bucketRect.y)
+        {
+            ball.active = false;
+            game.ballsLeft++;
+            game.freeBall = true;
+            return;
+        }
+    }
+
     // Extreme fever, the big circles at the bottom are solid
     if (game.feverActive)
     {
@@ -638,6 +787,8 @@ static void FinishShot(GameState& game, std::vector<Peg>& pegs, Popup& popup)
     else
     {
         popup.lines.push_back("SHOT SCORE +" + FormatNumber(shotScore));
+        if (game.freeBall)
+            popup.lines.push_back("FREE BALL!");
         game.score += shotScore;
 
         // The purple peg moves for the next shot
@@ -680,6 +831,7 @@ int main(int argc, char* argv[])
     Popup popup;
 
     bool running = true;
+    bool fastForward = false; // right mouse button held
     Screen screen = Screen::MainMenu;
     int  currentLevel = 1;
     bool levelSelectOpen = false;
@@ -782,8 +934,17 @@ int main(int argc, char* argv[])
                 mouseY = e.motion.y;
                 break;
 
+            case SDL_EVENT_MOUSE_BUTTON_UP:
+                if (e.button.button == SDL_BUTTON_RIGHT) fastForward = false;
+                break;
+
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
             {
+                if (e.button.button == SDL_BUTTON_RIGHT)
+                {
+                    fastForward = true;
+                    break;
+                }
                 if (e.button.button != SDL_BUTTON_LEFT) break;
                 mouseX = e.button.x;
                 mouseY = e.button.y;
@@ -799,6 +960,7 @@ int main(int argc, char* argv[])
                         game.ballsLeft--;
                         game.shot = ShotStats();
                         game.shot.orangeAtStart = game.orangeHit;
+                        game.freeBall = false;
                     }
                 }
                 else
@@ -827,6 +989,7 @@ int main(int argc, char* argv[])
         lastTicks = now;
         frameDt = std::min(frameDt, MAX_FRAME_DT);
         if (screen == Screen::Paused) frameDt = 0.0f; // nothing moves while paused
+        else if (fastForward && screen == Screen::Playing) frameDt *= GAME_SPEED_FAST;
 
         // ---- Main menu ----
         if (screen == Screen::MainMenu)
@@ -877,6 +1040,7 @@ int main(int argc, char* argv[])
         accumulator += frameDt * timeScale;
         while (accumulator >= PHYSICS_STEP)
         {
+            UpdateBucket(game, PHYSICS_STEP);
             UpdateBall(ball, pegs, hitOrder, game, PHYSICS_STEP);
             accumulator -= PHYSICS_STEP;
         }
@@ -947,6 +1111,29 @@ int main(int argc, char* argv[])
                 const std::string label = FormatNumber(ultra ? ULTRA_BUCKET_POINTS : FEVER_BUCKET_POINTS[k]);
                 const float midX = (FeverCircleX(k) + FeverCircleX(k + 1)) / 2.0f;
                 DrawText(renderer, label, midX - TextWidth(label, 1.0f) / 2.0f, PLAY_BOTTOM - 40.0f, 1.0f);
+            }
+        }
+
+        // Bucket, hidden during extreme fever
+        if (game.feverActive == false)
+        {
+            SDL_FRect bucketRect;
+            Triangle leftTri, rightTri;
+            GetBucketShape(game.bucketX, bucketRect, leftTri, rightTri);
+
+            SDL_SetRenderDrawColor(renderer, 190, 200, 225, 255);
+            SDL_RenderFillRect(renderer, &bucketRect);
+
+            const SDL_FColor triColour = { 0.45f, 0.5f, 0.65f, 1.0f };
+            for (const Triangle* tri : { &leftTri, &rightTri })
+            {
+                SDL_Vertex v[3] = {};
+                for (int i = 0; i < 3; ++i)
+                {
+                    v[i].position = tri->p[i];
+                    v[i].color = triColour;
+                }
+                SDL_RenderGeometry(renderer, nullptr, v, 3, nullptr, 0);
             }
         }
 
