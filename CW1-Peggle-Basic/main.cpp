@@ -827,6 +827,7 @@ int main(int argc, char* argv[])
     std::vector<Peg> pegs;
     std::vector<int> hitOrder; // pegs hit by the current shot, waiting to be deleted in order
     float removeTimer = 0.0f;
+    int   removeCount = 0; // how many pegs were waiting when the deleting started
     GameState game;
     Popup popup;
 
@@ -851,6 +852,7 @@ int main(int argc, char* argv[])
         popup = Popup();
         ball = Ball();
         removeTimer = 0.0f;
+        removeCount = 0;
         nameInput.clear();
         scoreSaved = false;
         levelSelectOpen = false;
@@ -1048,17 +1050,22 @@ int main(int argc, char* argv[])
         // Once the shot is gone, delete the hit pegs one by one in the order they were hit
         if (!ball.active && !hitOrder.empty())
         {
+            // The gap between deletions shrinks the more pegs there are, so it takes the same total time (up to a maximum gap)
+            if (removeCount == 0) removeCount = static_cast<int>(hitOrder.size());
+            const float removeInterval = std::min(PEG_REMOVE_MAX_DELAY, PEG_REMOVE_TOTAL_TIME / removeCount);
+
             removeTimer += frameDt;
-            while (removeTimer >= PEG_REMOVE_DELAY && !hitOrder.empty())
+            while (removeTimer >= removeInterval && !hitOrder.empty())
             {
                 pegs[hitOrder.front()].removed = true;
                 hitOrder.erase(hitOrder.begin());
-                removeTimer -= PEG_REMOVE_DELAY;
+                removeTimer -= removeInterval;
             }
         }
         else
         {
             removeTimer = 0.0f;
+            removeCount = 0;
         }
 
         // Shot is finished and the hit pegs are gone, so the shot is scored
@@ -1121,10 +1128,10 @@ int main(int argc, char* argv[])
             Triangle leftTri, rightTri;
             GetBucketShape(game.bucketX, bucketRect, leftTri, rightTri);
 
-            SDL_SetRenderDrawColor(renderer, 190, 200, 225, 255);
+            SDL_SetRenderDrawColor(renderer, 205, 215, 235, 255);
             SDL_RenderFillRect(renderer, &bucketRect);
 
-            const SDL_FColor triColour = { 0.45f, 0.5f, 0.65f, 1.0f };
+            const SDL_FColor triColour = { 0.62f, 0.68f, 0.85f, 1.0f };
             for (const Triangle* tri : { &leftTri, &rightTri })
             {
                 SDL_Vertex v[3] = {};

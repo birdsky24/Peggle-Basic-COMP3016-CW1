@@ -23,7 +23,8 @@ constexpr float BALL_RADIUS = 5.0f;
 constexpr float PEG_RADIUS = 10.0f;
 constexpr float PEG_BOUNCE = 0.85f;   // how bouncy the pegs are, 1.0 = no energy lost
 constexpr int   ORANGE_PEG_COUNT = 25; // orange pegs per level, every level also gets 1 purple peg and the rest are blue
-constexpr float PEG_REMOVE_DELAY = 0.1f; // seconds between each hit peg being deleted after the shot is gone
+constexpr float PEG_REMOVE_MAX_DELAY = 0.2f; // longest gap between two deletions, so a few pegs don't take ages
+constexpr float PEG_REMOVE_TOTAL_TIME = 1.5f; // seconds to delete every hit peg after the shot is gone, however many there are
 
 // Physics
 constexpr float GRAVITY = 900.0f; // speed is pixels / second^2
@@ -73,7 +74,7 @@ constexpr float FEVER_CIRCLE_Y = PLAY_BOTTOM - 20.0f;
 constexpr float FEVER_SLOWMO = 0.3f; // 1.0 = normal speed
 
 // Popup shown at the end of each shot
-constexpr float POPUP_TIME = 3.0f; // seconds
+constexpr float POPUP_TIME = 1.5f; // seconds
 
 // Fever meter in the right border
 constexpr int   METER_SEGMENT_HEIGHT = 16;
@@ -84,10 +85,10 @@ constexpr const char* LEADERBOARD_FILE = "leaderboard.txt"; // saved next to whe
 constexpr int   LEADERBOARD_ROWS = 8; // scores shown on the main menu
 
 // Moving bucket at the bottom, the rectangle catches the shot and the triangles either side bounce it
-constexpr float BUCKET_WIDTH = (PLAY_RIGHT - PLAY_LEFT) / 10.0f; // the rectangle is 1/10 of the play area
-constexpr float BUCKET_HEIGHT = 22.0f;
-constexpr float BUCKET_TRI_WIDTH = 36.0f;
-constexpr float BUCKET_TRI_HEIGHT = 30.0f; // a bit taller than the rectangle so it has a rim
+constexpr float BUCKET_WIDTH = (PLAY_RIGHT - PLAY_LEFT) / 5.0f; // the rectangle is 1/5 of the play area
+constexpr float BUCKET_HEIGHT = 24.0f;
+constexpr float BUCKET_TRI_WIDTH = 24.0f;
+constexpr float BUCKET_TRI_HEIGHT = 32.0f; // a bit taller than the rectangle so it has a rim
 constexpr float BUCKET_SWEEP_TIME = 3.0f; // seconds from one wall to the other, including slowing down at the walls
 constexpr float BUCKET_DWELL_TIME = 0.15f; // how long it is stopped at each wall
 constexpr float BUCKET_RAMP_TIME = 0.6f; // how long it takes to slow down and speed back up at each wall
