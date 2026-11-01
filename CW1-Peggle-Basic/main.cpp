@@ -67,6 +67,7 @@ enum class Screen
 {
     MainMenu,
     Playing,
+    Paused,
     Fail,
     LevelClear
 };
@@ -75,6 +76,8 @@ enum class Action
 {
     None, // a greyed out button
     Play,
+    Resume,
+    Quit,
     OpenLevelSelect,
     CloseLevelSelect,
     GoToLevel,
@@ -229,6 +232,15 @@ static std::vector<Button> GetScreenButtons(Screen screen, int currentLevel, int
     {
         buttons.push_back({ { 60.0f, 170.0f, 240.0f, 50.0f }, "PLAY", Action::Play, 0 });
         buttons.push_back({ { 60.0f, 240.0f, 240.0f, 50.0f }, "LEVEL SELECT", Action::OpenLevelSelect, 0 });
+        buttons.push_back({ { 60.0f, 310.0f, 240.0f, 50.0f }, "QUIT", Action::Quit, 0 });
+    }
+    else if (screen == Screen::Paused)
+    {
+        const float x = LAUNCHER_X - 150.0f;
+        buttons.push_back({ { x, 250.0f, 300.0f, 44.0f }, "RESUME", Action::Resume, 0 });
+        buttons.push_back({ { x, 304.0f, 300.0f, 44.0f }, "RESTART", Action::Restart, 0 });
+        buttons.push_back({ { x, 358.0f, 300.0f, 44.0f }, "MAIN MENU", Action::MainMenu, 0 });
+        buttons.push_back({ { x, 412.0f, 300.0f, 44.0f }, "LEVEL SELECT", Action::OpenLevelSelect, 0 });
     }
     else if (screen == Screen::Fail)
     {
@@ -667,6 +679,7 @@ int main(int argc, char* argv[])
     GameState game;
     Popup popup;
 
+    bool running = true;
     Screen screen = Screen::MainMenu;
     int  currentLevel = 1;
     bool levelSelectOpen = false;
@@ -714,6 +727,8 @@ int main(int argc, char* argv[])
         switch (b.action)
         {
         case Action::Play: startLevel(1); break;
+        case Action::Resume: screen = Screen::Playing; break;
+        case Action::Quit: running = false; break;
         case Action::OpenLevelSelect: levelSelectOpen = true; break;
         case Action::CloseLevelSelect: levelSelectOpen = false; break;
         case Action::GoToLevel: startLevel(b.level); break;
@@ -727,7 +742,6 @@ int main(int argc, char* argv[])
     float mouseX = LAUNCHER_X;
     float mouseY = WINDOW_H;
 
-    bool     running = true;
     float    accumulator = 0.0f;
     Uint64   lastTicks = SDL_GetTicksNS();
 
@@ -746,7 +760,10 @@ int main(int argc, char* argv[])
             case SDL_EVENT_KEY_DOWN:
                 if (e.key.key == SDLK_ESCAPE)
                 {
-                    running = false;
+                    // Esc closes the level selector, or pauses and unpauses a level
+                    if (levelSelectOpen) levelSelectOpen = false;
+                    else if (screen == Screen::Playing) screen = Screen::Paused;
+                    else if (screen == Screen::Paused) screen = Screen::Playing;
                 }
                 else if (screen == Screen::LevelClear && !scoreSaved && !levelSelectOpen)
                 {
@@ -809,6 +826,7 @@ int main(int argc, char* argv[])
         float frameDt = static_cast<float>(now - lastTicks) / 1.0e9f;
         lastTicks = now;
         frameDt = std::min(frameDt, MAX_FRAME_DT);
+        if (screen == Screen::Paused) frameDt = 0.0f; // nothing moves while paused
 
         // ---- Main menu ----
         if (screen == Screen::MainMenu)
@@ -1021,15 +1039,22 @@ int main(int argc, char* argv[])
                 DrawText(renderer, popup.lines[i], LAUNCHER_X - TextWidth(popup.lines[i], scale) / 2.0f, box.y + 10.0f + i * lineH, scale);
         }
 
-        // Fail and level clear pop-ups, drawn over the level
-        if (screen == Screen::Fail || screen == Screen::LevelClear)
+        // Pause, fail and level clear pop-ups, drawn over the level
+        if (screen == Screen::Paused || screen == Screen::Fail || screen == Screen::LevelClear)
         {
             const bool hoverOn = !levelSelectOpen;
             DrawDim(renderer, 170);
             DrawPanel(renderer, { LAUNCHER_X - 210.0f, 100.0f, 420.0f, 380.0f });
 
             const std::string scoreLine = "SCORE " + FormatNumber(game.score);
-            if (screen == Screen::Fail)
+            if (screen == Screen::Paused)
+            {
+                const std::string title = "PAUSED";
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                DrawText(renderer, title, LAUNCHER_X - TextWidth(title, 5.0f) / 2.0f, 125.0f, 5.0f);
+                DrawText(renderer, scoreLine, LAUNCHER_X - TextWidth(scoreLine, 2.0f) / 2.0f, 190.0f, 2.0f);
+            }
+            else if (screen == Screen::Fail)
             {
                 const std::string title = "FAIL";
                 SDL_SetRenderDrawColor(renderer, 230, 70, 60, 255);
