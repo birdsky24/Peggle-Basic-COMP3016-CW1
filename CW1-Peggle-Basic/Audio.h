@@ -15,6 +15,8 @@ enum class Sfx
     Applause,
     StyleShot,
     PurplePeg,
+    FeverBucket,    // landing in a 10,000 or 50,000 extreme fever bucket
+    FeverBucketTop, // landing in a 100,000 bucket
     FreeBallScore1, // the 3 free balls for a high scoring shot, one sound each
     FreeBallScore2,
     FreeBallScore3,

@@ -47,6 +47,8 @@ namespace
         case Sfx::Applause:     return SOUND_APPLAUSE;
         case Sfx::StyleShot:    return SOUND_STYLE_SHOT;
         case Sfx::PurplePeg:    return SOUND_PURPLE_PEG;
+        case Sfx::FeverBucket:  return SOUND_FEVER_BUCKET;
+        case Sfx::FeverBucketTop: return SOUND_FEVER_BUCKET_TOP;
         case Sfx::FreeBallScore1: return SOUND_FREE_BALL_1;
         case Sfx::FreeBallScore2: return SOUND_FREE_BALL_2;
         case Sfx::FreeBallScore3: return SOUND_FREE_BALL_3;

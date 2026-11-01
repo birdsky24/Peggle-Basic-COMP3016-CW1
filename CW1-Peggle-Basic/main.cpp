@@ -960,6 +960,7 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
 
             game.ultraFever = AllPegsCleared(pegs);
             game.bucketPoints = game.ultraFever ? ULTRA_BUCKET_POINTS : FEVER_BUCKET_POINTS[bucket];
+            PlaySfx(game.bucketPoints >= ULTRA_BUCKET_POINTS ? Sfx::FeverBucketTop : Sfx::FeverBucket); // the 100,000 bucket has its own sound
         }
     }
 }
@@ -1444,11 +1445,13 @@ int main(int argc, char* argv[])
         else if (fastForward && screen == Screen::Playing) frameDt *= GAME_SPEED_FAST;
 
         // ---- Music ----
-        // The menu song plays everywhere except while a level is being played (pausing a level or going back to
+        // The menu song plays everywhere except while a level is being played or cleared (pausing a level or going back to
         // the main menu brings it back where it left off). Levels have their own song, and so does extreme fever.
         Music music = Music::Menu;
         if (screen == Screen::Playing)
             music = game.feverActive ? Music::Fever : Music::Level;
+        else if (screen == Screen::LevelClear)
+            music = Music::Fever; // the fever song carries on over the level clear pop-up
         SetMusic(music);
         SetRouletteSpin(screen == Screen::Playing && game.roulette.active && !game.roulette.revealed);
 
