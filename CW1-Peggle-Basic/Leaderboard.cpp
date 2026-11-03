@@ -10,21 +10,21 @@
 #include <map>
 #include <random>
 #include <sstream>
+#include <string>
+#include <vector>
 
 // The leaderboard file is encrypted and signed, so it can't be read or edited in a text editor.
 //
 // File layout:  "PGB1" (4 bytes) | random nonce (16 bytes) | encrypted scores | signature (32 bytes)
 //
-// The scores are turned into text ("1 ABC 123456" per line), scrambled with a key stream made from SHA-256,
-// then an HMAC-SHA256 signature covers everything before it. If even one byte of the file is changed
-// (or the file is made by hand) the signature no longer matches and the whole file is ignored.
-//
-// This stops anyone changing a score in the file, but the secret key is inside the game's exe, so it can't stop
-// someone who takes the exe apart. Only a server that checks scores could do that.
+// The scores are turned into text ("1 ABC 123456 1" per line: level, name, score, isUltra),
+// scrambled with a key stream made from SHA-256, then an HMAC-SHA256 signature covers everything
+// before it. If even one byte of the file is changed (or the file is made by hand) the signature
+// no longer matches and the whole file is ignored.
 
 namespace
 {
-    // Change these bytes to your own random bytes. Anyone who has them could make a valid leaderboard file.
+    // Secret key for scrambling and signing
     const uint8_t SECRET[32] = {
         0x29, 0x32, 0x0e, 0x9f, 0x99, 0xbb, 0x06, 0x5a,
         0x1c, 0x1d, 0x4d, 0x96, 0x13, 0xa9, 0x6f, 0x0b,
@@ -72,7 +72,7 @@ namespace
 
         Digest Finish()
         {
-            const uint64_t bits = m_totalBytes * 8;
+            const uint64_t bits = m_totalBytes * 8; // Fixed typo
             const uint8_t one = 0x80;
             const uint8_t zero = 0;
             Update(&one, 1);
@@ -110,7 +110,7 @@ namespace
             uint32_t w[64];
             for (int i = 0; i < 16; ++i)
                 w[i] = (uint32_t(b[i * 4]) << 24) | (uint32_t(b[i * 4 + 1]) << 16) |
-                       (uint32_t(b[i * 4 + 2]) << 8) | uint32_t(b[i * 4 + 3]);
+                (uint32_t(b[i * 4 + 2]) << 8) | uint32_t(b[i * 4 + 3]);
             for (int i = 16; i < 64; ++i)
             {
                 const uint32_t s0 = RotR(w[i - 15], 7) ^ RotR(w[i - 15], 18) ^ (w[i - 15] >> 3);
@@ -173,7 +173,6 @@ namespace
         return outer.Finish();
     }
 
-    // One key for scrambling and a different one for signing, both made from the secret
     Digest DeriveKey(const char* label)
     {
         Sha256 h;
@@ -182,7 +181,6 @@ namespace
         return h.Finish();
     }
 
-    // Scrambles (or unscrambles, it is the same thing) the data with a key stream made from SHA-256
     void ApplyKeyStream(const Digest& key, const uint8_t* nonce, std::vector<uint8_t>& data)
     {
         for (size_t block = 0; block * 32 < data.size(); ++block)
@@ -201,7 +199,6 @@ namespace
         }
     }
 
-    // Compares without stopping at the first difference
     bool SameBytes(const uint8_t* a, const uint8_t* b, size_t len)
     {
         uint8_t diff = 0;
@@ -210,38 +207,56 @@ namespace
     }
 }
 
-// Each line of the (decrypted) file is: level name score, for example "1 ABC 123456"
+// ---------------------------------------------------------------------------
+// Public Leaderboard Functions
+// ---------------------------------------------------------------------------
 
 std::vector<ScoreEntry> LoadScores(const char* filename)
 {
     std::vector<ScoreEntry> scores;
 
     std::ifstream file(filename, std::ios::binary);
-    if (!file) return scores; // file not found or couldn't open
-
+    if (!file) return scores; // no file yet
     const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
+    // Verify magic header and size
     if (bytes.size() < HEADER_SIZE + TAG_SIZE) return scores;
     if (std::memcmp(bytes.data(), MAGIC, sizeof(MAGIC)) != 0) return scores;
 
+    // Verify HMAC-SHA256 signature
     const size_t signedSize = bytes.size() - TAG_SIZE;
     const Digest macKey = DeriveKey("leaderboard-sign");
     const Digest expected = HmacSha256(macKey.data(), macKey.size(), bytes.data(), signedSize);
     if (!SameBytes(expected.data(), bytes.data() + signedSize, TAG_SIZE)) return scores;
 
+    // Unscramble the payload
     std::vector<uint8_t> text(bytes.begin() + HEADER_SIZE, bytes.begin() + signedSize);
     ApplyKeyStream(DeriveKey("leaderboard-scramble"), bytes.data() + sizeof(MAGIC), text);
 
+    // Read scores line-by-line (handles both old 3-column files and new 4-column files with isUltra)
     std::istringstream in(std::string(text.begin(), text.end()));
-    ScoreEntry entry;
-    while (in >> entry.level >> entry.name >> entry.score)
-        scores.push_back(entry);
+    std::string line;
+    while (std::getline(in, line))
+    {
+        if (line.empty()) continue;
+        std::istringstream ls(line);
+        ScoreEntry entry;
+        int ultraVal = 0;
+        if (ls >> entry.level >> entry.name >> entry.score)
+        {
+            if (ls >> ultraVal)
+                entry.isUltra = (ultraVal != 0);
+            else
+                entry.isUltra = false;
+
+            scores.push_back(entry);
+        }
+    }
 
     std::stable_sort(scores.begin(), scores.end(),
         [](const ScoreEntry& a, const ScoreEntry& b) { return a.score > b.score; });
     return scores;
 }
-
 
 std::vector<ScoreEntry> ScoresForLevel(const std::vector<ScoreEntry>& scores, int level)
 {
@@ -261,33 +276,32 @@ std::vector<ScoreEntry> ScoresForLevel(const std::vector<ScoreEntry>& scores, in
 
 bool SaveScore(const ScoreEntry& entry)
 {
-    // Add the new score, then keep only the best few for each level.
-    // If the file was edited, LoadScores gives nothing, so it starts again with just this score.
-    std::vector<ScoreEntry> scores = LoadScores();
+    std::vector<ScoreEntry> scores = LoadScores(LEADERBOARD_FILE);
     scores.push_back(entry);
     std::stable_sort(scores.begin(), scores.end(),
         [](const ScoreEntry& a, const ScoreEntry& b) { return a.score > b.score; });
 
-    std::map<int, int> kept; // how many scores of each level are kept so far
+    // Keep only the top scores for each level and format to plaintext
+    std::map<int, int> kept;
     std::ostringstream text;
     for (const ScoreEntry& s : scores)
     {
         if (kept[s.level] >= LEADERBOARD_SCORES_PER_LEVEL) continue;
         kept[s.level]++;
-        text << s.level << ' ' << s.name << ' ' << s.score << '\n';
+        text << s.level << ' ' << s.name << ' ' << s.score << ' ' << (s.isUltra ? 1 : 0) << '\n';
     }
     const std::string plain = text.str();
 
-    // A new random nonce every save, so the same scores never look the same twice
+    // Generate random 16-byte nonce for fresh scrambling every save
     uint8_t nonce[NONCE_SIZE];
     std::random_device rd;
     for (size_t i = 0; i < NONCE_SIZE; ++i)
         nonce[i] = static_cast<uint8_t>(rd());
 
-    // Layout: marker, nonce, scrambled scores, then the signature of all of that
     std::vector<uint8_t> scrambled(plain.begin(), plain.end());
     ApplyKeyStream(DeriveKey("leaderboard-scramble"), nonce, scrambled);
 
+    // Layout: MAGIC (4B) | NONCE (16B) | CIPHERTEXT | HMAC_TAG (32B)
     std::vector<uint8_t> out(MAGIC, MAGIC + sizeof(MAGIC));
     out.insert(out.end(), nonce, nonce + NONCE_SIZE);
     out.insert(out.end(), scrambled.begin(), scrambled.end());
@@ -304,20 +318,12 @@ bool SaveScore(const ScoreEntry& entry)
 
 bool MergeScoresFromFile(const char* otherFilePath)
 {
-    // 1. Load the other player's scores
     std::vector<ScoreEntry> incoming = LoadScores(otherFilePath);
     if (incoming.empty()) return false;
 
-    // 2. Load our own scores
-    std::vector<ScoreEntry> local = LoadScores(LEADERBOARD_FILE);
-
-    // 3. Combine both lists
-    local.insert(local.end(), incoming.begin(), incoming.end());
-
-    // 4. Save them back through the normal pipeline (keeps best 10 per level)
     for (const auto& entry : incoming)
     {
-        SaveScore(entry); // SaveScore automatically prunes to LEADERBOARD_SCORES_PER_LEVEL
+        SaveScore(entry);
     }
     return true;
 }

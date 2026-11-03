@@ -10,6 +10,7 @@ struct ScoreEntry
     int level = 0;
     std::string name; // 3 letters
     long long score = 0;
+    bool isUltra = false; // <--- ADD THIS (100% pegs cleared)
 };
 
 // Reads scores from any encrypted leaderboard file (defaults to LEADERBOARD_FILE)

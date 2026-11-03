@@ -130,6 +130,12 @@ struct GameState
     std::vector<BallBonusPopup> ballBonusPopups;
     std::vector<DroppingBall> droppingBalls;
 
+    // Ultra Fever Ribbon Popup
+    bool ribbonActive = false;
+    float ribbonTimer = 0.0f;
+    bool ribbonDone = false;
+
+
     // Final shot
     Finale finale;
 
@@ -1014,13 +1020,19 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
                 game.feverActive = true;
                 PlaySfx(Sfx::Applause);
 
+                // Check if every single peg on screen has been hit!
+                game.ultraFever = AllPegsCleared(pegs);
+
+                // EXTREME FEVER text appears and the view slowly zooms back out
                 game.feverZoomOut = true;
                 game.feverZoomTimer = 0.0f;
                 game.feverZoomStart = game.camZoom;
 
+                // Kick the bucket, the ball came straight off the bucket's edge into the last orange peg
                 if (shot.edgeSincePeg)
                     AddStyle(game, "KICK THE BUCKET", KICK_THE_BUCKET_POINTS, peg.x, peg.y);
 
+                // Hat trick, the last 3 orange pegs were all hit in this shot
                 if (game.totalOrange >= 3 && shot.orangeAtStart <= game.totalOrange - 3)
                     AddStyle(game, "ORANGE HAT TRICK", ORANGE_HAT_TRICK_POINTS, peg.x, peg.y);
             }
@@ -1433,9 +1445,15 @@ static void DrawExtremeFeverText(SDL_Renderer* r, const GameState& game)
 {
     const float u = std::max(0.0f, std::min(1.0f, game.feverZoomTimer / EXTREME_FEVER_ZOOM_OUT_TIME));
     const float ease = u * u * (3.0f - 2.0f * u);
-    const float scale = EXTREME_FEVER_TEXT_SCALE + (EXTREME_FEVER_TEXT_END_SCALE - EXTREME_FEVER_TEXT_SCALE) * ease;
+
+    // If ultra fever, start slightly smaller so "ULTRA EXTREME FEVER!" fits on screen
+    const float startScale = game.ultraFever ? (EXTREME_FEVER_TEXT_SCALE * 0.75f) : EXTREME_FEVER_TEXT_SCALE;
+    const float endScale = game.ultraFever ? (EXTREME_FEVER_TEXT_END_SCALE * 0.75f) : EXTREME_FEVER_TEXT_END_SCALE;
+    const float scale = startScale + (endScale - startScale) * ease;
     const float fade = std::max(0.0f, std::min(1.0f, (1.0f - u) / 0.5f));
-    const std::string text = "EXTREME FEVER!";
+
+    // Choose text based on whether it is Ultra Extreme Fever
+    const std::string text = game.ultraFever ? "ULTRA EXTREME FEVER!" : "EXTREME FEVER!";
     const float y = (PLAY_TOP + PLAY_BOTTOM) / 2.0f - 4.0f * scale;
     DrawOutlinedText(r, text, LAUNCHER_X - TextWidth(text, scale) / 2.0f, y, scale, COL_ORANGE, static_cast<Uint8>(255.0f * fade));
 }
@@ -1517,6 +1535,11 @@ int main(int argc, char* argv[])
     if (worldTex) SDL_SetTextureScaleMode(worldTex, SDL_SCALEMODE_LINEAR);
     else SDL_Log("Zoom texture failed: %s", SDL_GetError());
 
+    // Load Ribbon image (BMP)
+    SDL_Surface* ribbonSurf = SDL_LoadBMP("ribbon.bmp");
+    SDL_Texture* ribbonTex = ribbonSurf ? SDL_CreateTextureFromSurface(renderer, ribbonSurf) : nullptr;
+    if (ribbonSurf) SDL_DestroySurface(ribbonSurf);
+
     Ball  ball;
     std::vector<Peg> pegs;
     std::vector<int> hitOrder;
@@ -1573,6 +1596,7 @@ int main(int argc, char* argv[])
             entry.level = currentLevel;
             entry.name = nameInput;
             entry.score = game.score;
+            entry.isUltra = game.ultraFever;
             if (SaveScore(entry)) scoreSaved = true;
         };
 
@@ -1816,6 +1840,23 @@ int main(int argc, char* argv[])
                 else
                 {
                     const std::string scoreText = FormatNumber(levelScores[0].score);
+                    const float scoreX = 760.0f - TextWidth(scoreText, 2.0f);
+
+                    // If Ultra Fever, draw the mini rosette icon!
+                    if (levelScores[0].isUltra)
+                    {
+                        if (ribbonTex)
+                        {
+                            const SDL_FRect miniRibbon = { scoreX - 18.0f, y - 2.0f, 14.0f, 22.0f };
+                            SDL_RenderTexture(renderer, ribbonTex, nullptr, &miniRibbon);
+                        }
+                        else
+                        {
+                            SDL_SetRenderDrawColor(renderer, 255, 215, 0, 255);
+                            DrawText(renderer, "*", scoreX - 14.0f, y, 2.0f);
+                        }
+                    }
+
                     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
                     DrawText(renderer, levelScores[0].name, 530.0f, y, 2.0f);
                     DrawText(renderer, scoreText, 760.0f - TextWidth(scoreText, 2.0f), y, 2.0f);
@@ -1838,6 +1879,17 @@ int main(int argc, char* argv[])
                     {
                         const float y = panel.y + 38.0f + i * 22.0f;
                         const std::string scoreText = FormatNumber(levelScores[i].score);
+                        const float scoreX = panel.x + panel.w - 10.0f - TextWidth(scoreText, 2.0f);
+
+                        if (levelScores[i].isUltra)
+                        {
+                            if (ribbonTex)
+                            {
+                                const SDL_FRect miniRibbon = { scoreX - 18.0f, y - 2.0f, 14.0f, 22.0f };
+                                SDL_RenderTexture(renderer, ribbonTex, nullptr, &miniRibbon);
+                            }
+                        }
+
                         SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
                         DrawText(renderer, std::to_string(i + 1) + ".", panel.x + 10.0f, y, 2.0f);
                         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
@@ -2040,8 +2092,39 @@ int main(int argc, char* argv[])
         if (screen == Screen::Playing && !game.shotInProgress && !ball.active && hitOrder.empty() && popup.timer <= 0.0f && !game.roulette.active
             && !game.ballBonusActive && game.ballBonusPopups.empty() && !game.finale.scoreActive)
         {
-            if (game.levelComplete) screen = Screen::LevelClear;
-            else if (game.ballsLeft <= 0) screen = Screen::Fail;
+            if (game.levelComplete)
+            {
+                // If 100% pegs were cleared, show the 3-second ribbon celebration first!
+                if (game.ultraFever && !game.ribbonDone)
+                {
+                    if (!game.ribbonActive)
+                    {
+                        game.ribbonActive = true;
+                        game.ribbonTimer = 3.0f;
+                        PlaySfx(Sfx::Applause);
+                    }
+                }
+                else
+                {
+                    screen = Screen::LevelClear;
+                }
+            }
+            else if (game.ballsLeft <= 0)
+            {
+                screen = Screen::Fail;
+            }
+        }
+
+        // Count down the ribbon timer
+        if (game.ribbonActive)
+        {
+            game.ribbonTimer -= frameDt;
+            if (game.ribbonTimer <= 0.0f)
+            {
+                game.ribbonActive = false;
+                game.ribbonDone = true;
+                screen = Screen::LevelClear; // Win screen pops up now!
+            }
         }
 
         // ---- Render ----
@@ -2130,6 +2213,32 @@ int main(int argc, char* argv[])
             SDL_RenderClear(renderer);
             const SDL_FRect view = CameraSource(game);
             SDL_RenderTexture(renderer, worldTex, &view, nullptr);
+        }
+
+        // Draw 3-Second Ultra Extreme Fever Ribbon Celebration
+        if (game.ribbonActive)
+        {
+            DrawDim(renderer, 190);
+
+            const float rw = 190.0f;
+            const float rh = 300.0f;
+            const SDL_FRect ribbonRect = { LAUNCHER_X - rw / 2.0f, (WINDOW_H - rh) / 2.0f - 20.0f, rw, rh };
+
+            if (ribbonTex)
+            {
+                SDL_RenderTexture(renderer, ribbonTex, nullptr, &ribbonRect);
+            }
+            else
+            {
+                // Fallback text if ribbon.bmp isn't found
+                const std::string badge = "[ 100% ALL PEGS CLEARED! ]";
+                SDL_SetRenderDrawColor(renderer, 255, 215, 0, 255);
+                DrawText(renderer, badge, LAUNCHER_X - TextWidth(badge, 2.5f) / 2.0f, ribbonRect.y + 120.0f, 2.5f);
+            }
+
+            const std::string banner = "ULTRA EXTREME FEVER!";
+            SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
+            DrawText(renderer, banner, LAUNCHER_X - TextWidth(banner, 2.0f) / 2.0f, ribbonRect.y + rh + 15.0f, 2.0f);
         }
 
         // Borders
@@ -2264,6 +2373,7 @@ int main(int argc, char* argv[])
 
     AudioShutdown();
     if (worldTex) SDL_DestroyTexture(worldTex);
+    if(ribbonTex) SDL_DestroyTexture(ribbonTex);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
