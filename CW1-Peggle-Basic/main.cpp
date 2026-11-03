@@ -1062,7 +1062,8 @@ static void FinishShot(GameState& game, std::vector<Peg>& pegs, Popup& popup)
     }
     else
     {
-        popup.timer = POPUP_TIME;
+        // The final shot of a level stays up longer so its breakdown can be read before the win screen
+        popup.timer = game.levelComplete ? LEVEL_CLEAR_POPUP_TIME : POPUP_TIME;
     }
     game.shotInProgress = false;
 }
@@ -1461,7 +1462,7 @@ int main(int argc, char* argv[])
 
                 if (screen == Screen::Playing)
                 {
-                    if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete && !game.roulette.active)
+                    if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete && !game.roulette.active && popup.timer <= 0.0f)
                     {
                         float dirX, dirY;
                         GetAimDirection(mouseX, mouseY, dirX, dirY);
@@ -1753,7 +1754,7 @@ int main(int argc, char* argv[])
         DrawFilledCircle(renderer, LAUNCHER_X, LAUNCHER_Y, 14.0f);
 
         // Aim guide only shows when no ball is in play and the hit pegs are deleted
-        if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete && !game.roulette.active)
+        if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete && !game.roulette.active && popup.timer <= 0.0f)
         {
             float dirX, dirY;
             GetAimDirection(mouseX, mouseY, dirX, dirY);

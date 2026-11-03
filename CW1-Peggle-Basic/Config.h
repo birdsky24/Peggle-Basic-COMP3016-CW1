@@ -92,6 +92,7 @@ constexpr float SLOWMO_TRIGGER_DISTANCE = 90.0f; // time slows when the ball is 
 // Popup shown at the end of each shot
 constexpr float POPUP_TIME = 1.5f; // seconds
 constexpr float POPUP_FADE_TIME = 0.3f; // it fades out over the last bit of POPUP_TIME
+constexpr float LEVEL_CLEAR_POPUP_TIME = 2.5f; // seconds the last shot's popup stays up before the level clear screen appears
 
 // 50/50 for a shot that hits nothing, a missed shot gets one more go or is lost
 constexpr float ROULETTE_TIME = 2.0f; // seconds the whole pop-up is on screen
