@@ -138,14 +138,48 @@ static std::vector<Peg> BuildLevel4()
     return pegs;
 }
 
-// ---------------------------------------------------------------------------
-// Public functions
-// ---------------------------------------------------------------------------
-int LevelCount()
+// Add above LevelCount():
+
+// Level 5 - 7 vertical columns of pegs equally spaced across the play area (100 pegs)
+static std::vector<Peg> BuildLevel5()
 {
-    return 4; // Updated to 4 levels
+    std::vector<Peg> pegs;
+
+    constexpr int   columnCount = 7;
+    constexpr float startY = 180.0f;
+    constexpr float endY = 480.0f;
+    constexpr float columnHeight = endY - startY;
+
+    // 8 equal gaps between walls and the 7 columns (87.5px each)
+    constexpr float gapX = (PLAY_RIGHT - PLAY_LEFT) / (columnCount + 1.0f);
+
+    for (int col = 0; col < columnCount; ++col)
+    {
+        const float x = PLAY_LEFT + (col + 1) * gapX;
+
+        // 6 columns with 14 pegs + 1 center column with 16 pegs = 100 pegs
+        const int count = (col == 3) ? 16 : 14;
+        const float spacing = columnHeight / static_cast<float>(count - 1);
+
+        for (int i = 0; i < count; ++i)
+        {
+            Peg p;
+            p.x = x;
+            p.y = startY + i * spacing;
+            pegs.push_back(p);
+        }
+    }
+
+    return pegs;
 }
 
+// Update LevelCount():
+int LevelCount()
+{
+    return 5; // Updated to 5 levels
+}
+
+// Update BuildLevel():
 std::vector<Peg> BuildLevel(int levelNumber)
 {
     std::vector<Peg> pegs;
@@ -154,7 +188,8 @@ std::vector<Peg> BuildLevel(int levelNumber)
     case 1: pegs = BuildLevel1(); break;
     case 2: pegs = BuildLevel2(); break;
     case 3: pegs = BuildLevel3(); break;
-    case 4: pegs = BuildLevel4(); break; // Added Level 4
+    case 4: pegs = BuildLevel4(); break;
+    case 5: pegs = BuildLevel5(); break; // Added Level 5
     default: break;
     }
 
