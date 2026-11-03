@@ -70,6 +70,13 @@ struct Roulette
     float timer = 0.0f;
 };
 
+// The +10,000 shown next to a ball in the left stack as it is cashed in during extreme fever
+struct BallBonusPopup
+{
+    int index = 0; // which ball in the stack (0 = bottom)
+    float timer = 0.0f;
+};
+
 struct GameState
 {
     long long score = 0;
@@ -91,6 +98,13 @@ struct GameState
     float bucketX = LAUNCHER_X; // centre of the bucket
     ShotStats shot;
     std::vector<FloatingText> floaters; // small pop-ups next to pegs
+
+    // After the last orange peg's shot, the balls left are cashed in one by one from the top of the stack
+    bool ballBonusActive = false;
+    int ballBonusShown = 0;      // balls still drawn in the stack while it is cashing in
+    int ballBonusLayoutCount = 0; // how many balls the stack had at the start, so the spacing doesn't change
+    float ballBonusTimer = 0.0f;
+    std::vector<BallBonusPopup> ballBonusPopups;
 };
 
 // The box in the middle of the screen at the end of each shot
@@ -1038,6 +1052,15 @@ static void FinishShot(GameState& game, std::vector<Peg>& pegs, Popup& popup)
 
         game.score += feverScore;
         game.levelComplete = true;
+
+        // Start cashing in the balls left (the stack is drawn from ballBonusShown until it is empty)
+        if (game.ballsLeft > 0)
+        {
+            game.ballBonusActive = true;
+            game.ballBonusShown = game.ballsLeft;
+            game.ballBonusLayoutCount = game.ballsLeft;
+            game.ballBonusTimer = 0.0f;
+        }
     }
     else
     {
@@ -1194,14 +1217,24 @@ static void DrawBallMeter(SDL_Renderer* r, const GameState& game, bool live)
     DrawText(r, "BALL", cx - TextWidth("BALL", 1.0f) / 2.0f, cy + 1.0f, 1.0f);
 
     // Balls left, stacked up from just above the circle
-    const int n = std::max(game.ballsLeft, 0);
+    // While the balls are being cashed in, the spacing stays what it was at the start
+    const int n = std::max(game.ballBonusActive ? game.ballBonusShown : game.ballsLeft, 0);
+    const int layoutN = game.ballBonusActive ? game.ballBonusLayoutCount : n;
     const float firstY = cy - circleR - 4.0f - STACK_BALL_RADIUS;
     const float topY = barTop + 6.0f + STACK_BALL_RADIUS;
     float pitch = STACK_BALL_PITCH;
-    if (n > 1) pitch = std::min(pitch, (firstY - topY) / static_cast<float>(n - 1));
+    if (layoutN > 1) pitch = std::min(pitch, (firstY - topY) / static_cast<float>(layoutN - 1));
     SDL_SetRenderDrawColor(r, 230, 230, 240, 255);
     for (int i = 0; i < n; ++i)
         DrawFilledCircle(r, cx, firstY - i * pitch, STACK_BALL_RADIUS);
+
+    // The +10,000 where each ball was, just inside the play area
+    const std::string bonusText = "+" + FormatNumber(UNUSED_BALL_POINTS);
+    for (const BallBonusPopup& b : game.ballBonusPopups)
+    {
+        const float scale = PEG_POPUP_SCALE;
+        DrawOutlinedText(r, bonusText, PLAY_LEFT + 6.0f, firstY - b.index * pitch - 4.0f * scale, scale, COL_YELLOW);
+    }
 }
 
 // The chance (0 to 100) shown for RETURN. It starts at 50 and swings further each time, ending on 100 (returned) or 0 (lost).
@@ -1462,7 +1495,7 @@ int main(int argc, char* argv[])
 
                 if (screen == Screen::Playing)
                 {
-                    if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete && !game.roulette.active && popup.timer <= 0.0f)
+                    if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete && !game.roulette.active)
                     {
                         float dirX, dirY;
                         GetAimDirection(mouseX, mouseY, dirX, dirY);
@@ -1609,6 +1642,30 @@ int main(int argc, char* argv[])
                                            [](const FloatingText& f) { return f.timer <= 0.0f; }),
                             game.floaters.end());
 
+        // Balls left are cashed in one by one from the top of the stack, like the pegs, each leaving a +10,000 behind
+        for (BallBonusPopup& b : game.ballBonusPopups)
+            b.timer -= frameDt;
+        game.ballBonusPopups.erase(std::remove_if(game.ballBonusPopups.begin(), game.ballBonusPopups.end(),
+                                                  [](const BallBonusPopup& b) { return b.timer <= 0.0f; }),
+                                   game.ballBonusPopups.end());
+        if (game.ballBonusActive)
+        {
+            const float interval = std::min(BALL_BONUS_MAX_DELAY, BALL_BONUS_TOTAL_TIME / static_cast<float>(game.ballBonusLayoutCount));
+            game.ballBonusTimer += frameDt;
+            while (game.ballBonusTimer >= interval && game.ballBonusShown > 0)
+            {
+                game.ballBonusShown--;
+                game.ballBonusPopups.push_back({ game.ballBonusShown, BALL_BONUS_POPUP_TIME });
+                PlaySfx(Sfx::PegRemove);
+                game.ballBonusTimer -= interval;
+            }
+            if (game.ballBonusShown <= 0)
+            {
+                game.ballBonusActive = false;
+                game.ballsLeft = 0; // all cashed in, so the stack stays empty
+            }
+        }
+
         // The 50/50 swings for a while, then the shot is given back (or not), then the pop-up goes away
         if (game.roulette.active)
         {
@@ -1681,7 +1738,8 @@ int main(int argc, char* argv[])
             popup.timer -= frameDt;
 
         // Once the shot popup is gone, check if the level is cleared or out of shots
-        if (screen == Screen::Playing && !game.shotInProgress && !ball.active && hitOrder.empty() && popup.timer <= 0.0f && !game.roulette.active)
+        if (screen == Screen::Playing && !game.shotInProgress && !ball.active && hitOrder.empty() && popup.timer <= 0.0f && !game.roulette.active
+            && !game.ballBonusActive && game.ballBonusPopups.empty())
         {
             if (game.levelComplete) screen = Screen::LevelClear;
             else if (game.ballsLeft <= 0) screen = Screen::Fail;
@@ -1754,7 +1812,7 @@ int main(int argc, char* argv[])
         DrawFilledCircle(renderer, LAUNCHER_X, LAUNCHER_Y, 14.0f);
 
         // Aim guide only shows when no ball is in play and the hit pegs are deleted
-        if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete && !game.roulette.active && popup.timer <= 0.0f)
+        if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete && !game.roulette.active)
         {
             float dirX, dirY;
             GetAimDirection(mouseX, mouseY, dirX, dirY);
