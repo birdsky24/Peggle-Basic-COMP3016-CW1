@@ -7,8 +7,12 @@
 #include <algorithm>
 #include <cmath>
 
+#include <fstream>
+
 namespace
 {
+    float g_audioVolume = 1.0f;
+
     constexpr int SFX_COUNT = static_cast<int>(Sfx::Count);
     constexpr int SFX_TRACK_COUNT = 24; // sounds that can play at the same time
 
@@ -127,11 +131,14 @@ bool AudioInit()
         }
     }
     MIX_SetTrackGain(g_spinTrack, SFX_VOLUME);
+    LoadAudioSettings();
     return true;
 }
 
 void AudioShutdown()
 {
+    SaveAudioSettings();
+
     if (!g_mixer) return;
 
     // Destroying the mixer stops and frees its tracks
@@ -164,7 +171,7 @@ void PlaySfx(Sfx sfx, float pitchSemitones)
     if (!track) return;
 
     MIX_SetTrackAudio(track, audio);
-    MIX_SetTrackGain(track, SFX_VOLUME);
+    MIX_SetTrackGain(track, SFX_VOLUME * g_audioVolume); // Updated to scale with master volume
     MIX_SetTrackFrequencyRatio(track, std::pow(2.0f, pitchSemitones / 12.0f)); // changes the pitch
     MIX_PlayTrack(track, 0);
 }
@@ -213,4 +220,48 @@ void SetRouletteSpin(bool on)
 
     MIX_SetTrackAudio(g_spinTrack, g_rouletteSpin);
     PlayLooping(g_spinTrack, 0);
+}
+
+void SetAudioVolume(float volume)
+{
+    g_audioVolume = std::max(0.0f, std::min(2.0f, volume));
+
+    // Update music gain live
+    for (Song* song : { &g_menuSong, &g_levelSong, &g_feverSong })
+    {
+        if (song->track)
+            MIX_SetTrackGain(song->track, MUSIC_VOLUME * g_audioVolume);
+    }
+    if (g_spinTrack)
+        MIX_SetTrackGain(g_spinTrack, SFX_VOLUME * g_audioVolume);
+}
+
+float GetAudioVolume()
+{
+    return g_audioVolume;
+}
+
+void SaveAudioSettings()
+{
+    std::ofstream file(SETTINGS_FILE);
+    if (file)
+    {
+        file << g_audioVolume << "\n";
+    }
+}
+
+void LoadAudioSettings()
+{
+    std::ifstream file(SETTINGS_FILE);
+    if (file)
+    {
+        float vol = 1.0f;
+        if (file >> vol)
+        {
+            SetAudioVolume(vol); // Clamps and updates all track gains
+            return;
+        }
+    }
+    // Default to 100% (1.0f) if no file exists yet
+    SetAudioVolume(1.0f);
 }

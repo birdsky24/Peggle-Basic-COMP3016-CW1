@@ -45,6 +45,14 @@ void PlaySfx(Sfx sfx, float pitchSemitones = 0.0f);
 // it carries on from the same place. All songs loop. Does nothing if it is already playing.
 void SetMusic(Music music);
 
+// Master audio volume (0.0f = silent, 1.0f = full volume)
+void SetAudioVolume(float volume);
+float GetAudioVolume();
+
+// Loads/saves the volume to settings.cfg
+void LoadAudioSettings();
+void SaveAudioSettings();
+
 // Starts the level and fever songs from the beginning next time they play, call it when a level (re)starts.
 // The menu song is left alone so it still carries on from where it was.
 void ResetLevelMusic();

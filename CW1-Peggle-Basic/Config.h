@@ -143,6 +143,9 @@ constexpr int   METER_SEGMENT_GAP = 3;
 constexpr const char* LEADERBOARD_FILE = "leaderboard.dat"; // encrypted and signed, saved next to where the game is run from
 constexpr int   LEADERBOARD_SCORES_PER_LEVEL = 10; // best scores kept for each level, lower ones are deleted from the file
 
+// Settings
+constexpr const char* SETTINGS_FILE = "settings.cfg";
+
 // Moving bucket at the bottom, the rectangle catches the shot and the triangles either side bounce it
 constexpr float BUCKET_WIDTH = (PLAY_RIGHT - PLAY_LEFT) / 5.0f; // the rectangle is 1/5 of the play area
 constexpr float BUCKET_HEIGHT = 24.0f;
