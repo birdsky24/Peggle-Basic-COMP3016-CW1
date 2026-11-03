@@ -212,25 +212,23 @@ namespace
 
 // Each line of the (decrypted) file is: level name score, for example "1 ABC 123456"
 
-std::vector<ScoreEntry> LoadScores()
+std::vector<ScoreEntry> LoadScores(const char* filename)
 {
     std::vector<ScoreEntry> scores;
 
-    std::ifstream file(LEADERBOARD_FILE, std::ios::binary);
-    if (!file) return scores; // no file yet
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) return scores; // file not found or couldn't open
+
     const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
-    // Anything that is the wrong size, or doesn't start with the right marker, isn't ours
     if (bytes.size() < HEADER_SIZE + TAG_SIZE) return scores;
     if (std::memcmp(bytes.data(), MAGIC, sizeof(MAGIC)) != 0) return scores;
 
-    // The signature has to match everything before it, otherwise the file was changed
     const size_t signedSize = bytes.size() - TAG_SIZE;
     const Digest macKey = DeriveKey("leaderboard-sign");
     const Digest expected = HmacSha256(macKey.data(), macKey.size(), bytes.data(), signedSize);
     if (!SameBytes(expected.data(), bytes.data() + signedSize, TAG_SIZE)) return scores;
 
-    // Unscramble the scores
     std::vector<uint8_t> text(bytes.begin() + HEADER_SIZE, bytes.begin() + signedSize);
     ApplyKeyStream(DeriveKey("leaderboard-scramble"), bytes.data() + sizeof(MAGIC), text);
 
@@ -243,6 +241,7 @@ std::vector<ScoreEntry> LoadScores()
         [](const ScoreEntry& a, const ScoreEntry& b) { return a.score > b.score; });
     return scores;
 }
+
 
 std::vector<ScoreEntry> ScoresForLevel(const std::vector<ScoreEntry>& scores, int level)
 {
@@ -301,4 +300,24 @@ bool SaveScore(const ScoreEntry& entry)
     if (!file) return false;
     file.write(reinterpret_cast<const char*>(out.data()), static_cast<std::streamsize>(out.size()));
     return static_cast<bool>(file);
+}
+
+bool MergeScoresFromFile(const char* otherFilePath)
+{
+    // 1. Load the other player's scores
+    std::vector<ScoreEntry> incoming = LoadScores(otherFilePath);
+    if (incoming.empty()) return false;
+
+    // 2. Load our own scores
+    std::vector<ScoreEntry> local = LoadScores(LEADERBOARD_FILE);
+
+    // 3. Combine both lists
+    local.insert(local.end(), incoming.begin(), incoming.end());
+
+    // 4. Save them back through the normal pipeline (keeps best 10 per level)
+    for (const auto& entry : incoming)
+    {
+        SaveScore(entry); // SaveScore automatically prunes to LEADERBOARD_SCORES_PER_LEVEL
+    }
+    return true;
 }

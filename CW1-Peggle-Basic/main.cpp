@@ -167,7 +167,8 @@ enum class Action
     Restart,
     MainMenu,
     NextLevel,
-    SaveScore
+    SaveScore,
+    ImportScore
 };
 
 struct Button
@@ -339,9 +340,10 @@ static std::vector<Button> GetScreenButtons(Screen screen, int currentLevel, int
 
     if (screen == Screen::MainMenu)
     {
-        buttons.push_back({ { 60.0f, 170.0f, 240.0f, 50.0f }, "PLAY", Action::Play, 0 });
-        buttons.push_back({ { 60.0f, 240.0f, 240.0f, 50.0f }, "LEVEL SELECT", Action::OpenLevelSelect, 0 });
-        buttons.push_back({ { 60.0f, 310.0f, 240.0f, 50.0f }, "QUIT", Action::Quit, 0 });
+        buttons.push_back({ { 60.0f, 170.0f, 240.0f, 45.0f }, "PLAY", Action::Play, 0 });
+        buttons.push_back({ { 60.0f, 225.0f, 240.0f, 45.0f }, "LEVEL SELECT", Action::OpenLevelSelect, 0 });
+        buttons.push_back({ { 60.0f, 280.0f, 240.0f, 45.0f }, "IMPORT SCORES", Action::ImportScore, 0 });
+        buttons.push_back({ { 60.0f, 335.0f, 240.0f, 45.0f }, "QUIT", Action::Quit, 0 });
     }
     else if (screen == Screen::Paused)
     {
@@ -1534,6 +1536,29 @@ int main(int argc, char* argv[])
         case Action::MainMenu: goToMenu(); break;
         case Action::NextLevel: startLevel(currentLevel + 1); break;
         case Action::SaveScore: saveScore(); break;
+        case Action::ImportScore:
+        {
+            // SDL3 Native File Dialog
+            SDL_DialogFileFilter filters[] = { { "Leaderboard Data", "dat" } };
+
+            SDL_ShowOpenFileDialog([](void* userdata, const char* const* filelist, int filter) {
+                if (filelist && *filelist)
+                {
+                    const char* path = *filelist;
+                    if (MergeScoresFromFile(path))
+                    {
+                        SDL_Log("Successfully merged scores from: %s", path);
+                        auto scoresPtr = static_cast<std::vector<ScoreEntry>*>(userdata);
+                        if (scoresPtr) *scoresPtr = LoadScores(); // refresh UI
+                    }
+                    else
+                    {
+                        SDL_Log("Failed to merge scores (corrupted or wrong file).");
+                    }
+                }
+                }, &scores, window, filters, 1, nullptr, false);
+            break;
+        }
         default: break;
         }
     };

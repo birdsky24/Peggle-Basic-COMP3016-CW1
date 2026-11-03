@@ -160,7 +160,7 @@ constexpr float GAME_SPEED_FAST = 3.0f;
 // your mp3 files. A file that is missing is skipped (a message is written to the log), so they can be added one at a time.
 constexpr const char* SOUND_BUTTON_CLICK = "sounds/button2.ogg"; // clicking a button in a menu
 constexpr const char* SOUND_PEG_HIT = "sounds/peg_hit.ogg";           // the ball hits a peg, higher each peg in the shot
-constexpr const char* SOUND_PEG_REMOVE = "sounds/pegpop.ogg";     // a hit peg is deleted
+constexpr const char* SOUND_PEG_REMOVE = "sounds/pegpop.mp3";     // a hit peg is deleted
 constexpr const char* SOUND_FREE_BALL = "sounds/free_ball.ogg";       // catching the shot in the bucket or winning the 50/50
 constexpr const char* SOUND_FREE_BALL_1 = "sounds/extraball.ogg";   // the shot's score reaches the 1st free ball (25,000)
 constexpr const char* SOUND_FREE_BALL_2 = "sounds/extraball2.ogg";   // the 2nd free ball (75,000)
