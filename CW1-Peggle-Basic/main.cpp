@@ -91,6 +91,15 @@ struct Finale
     float holdTimer = 0.0f;       // time the finished number has been on screen
 };
 
+struct DroppingBall
+{
+    float y = 0.0f;
+    float vy = 0.0f;
+    int targetIndex = 0; // Which slot in the stack it is falling into
+    int bouncesLeft = 1; // 1 small bounce upon landing
+    bool settled = false;
+};
+
 struct GameState
 {
     long long score = 0;
@@ -119,6 +128,7 @@ struct GameState
     int ballBonusLayoutCount = 0; // how many balls the stack had at the start, so the spacing doesn't change
     float ballBonusTimer = 0.0f;
     std::vector<BallBonusPopup> ballBonusPopups;
+    std::vector<DroppingBall> droppingBalls;
 
     // Final shot
     Finale finale;
@@ -489,6 +499,35 @@ static long long LiveShotScore(const ShotStats& shot)
     return static_cast<long long>(shot.pegScoreSum) * shot.pegsHit + shot.stylePoints;
 }
 
+// Calculates the resting Y position for a ball in the left stack
+static float GetStackBallY(int index, int totalBalls)
+{
+    const float circleR = FREE_BALL_CIRCLE_RADIUS;
+    const float cy = PLAY_BOTTOM - circleR - 12.0f;
+    const float barTop = PLAY_TOP + 10.0f;
+    const float firstY = cy - circleR - 4.0f - STACK_BALL_RADIUS;
+    const float topY = barTop + 6.0f + STACK_BALL_RADIUS;
+
+    float pitch = STACK_BALL_PITCH;
+    if (totalBalls > 1)
+        pitch = std::min(pitch, (firstY - topY) / static_cast<float>(totalBalls - 1));
+
+    return firstY - index * pitch;
+}
+
+// Gives a free ball and starts its drop animation down the chute
+static void AwardFreeBall(GameState& game)
+{
+    const int targetIdx = game.ballsLeft; // The new top of the stack
+    game.ballsLeft++;
+
+    DroppingBall drop;
+    drop.y = PLAY_TOP - 15.0f; // Starts above the top of the chute
+    drop.vy = 80.0f;           // Initial downward velocity
+    drop.targetIndex = targetIdx;
+    game.droppingBalls.push_back(drop);
+}
+
 // Gives a free ball each time the shot's score passes the next threshold
 static void CheckFreeBalls(GameState& game)
 {
@@ -498,7 +537,7 @@ static void CheckFreeBalls(GameState& game)
     {
         PlaySfx(static_cast<Sfx>(static_cast<int>(Sfx::FreeBallScore1) + shot.freeBallsEarned));
         shot.freeBallsEarned++;
-        game.ballsLeft++;
+        AwardFreeBall(game);
         shot.freeBallFlash = FREE_BALL_FLASH_TIME;
     }
 }
@@ -1051,7 +1090,7 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
                 }
             }
 
-            game.ballsLeft++;
+            AwardFreeBall(game);
             PlaySfx(Sfx::FreeBall);
             game.freeBall = true;
             return;
@@ -1273,8 +1312,28 @@ static void DrawBallMeter(SDL_Renderer* r, const GameState& game, bool live)
     float pitch = STACK_BALL_PITCH;
     if (layoutN > 1) pitch = std::min(pitch, (firstY - topY) / static_cast<float>(layoutN - 1));
     SDL_SetRenderDrawColor(r, 230, 230, 240, 255);
+
+    // 1. Draw static balls (skipping any ball slot that is actively dropping)
     for (int i = 0; i < n; ++i)
-        DrawFilledCircle(r, cx, firstY - i * pitch, STACK_BALL_RADIUS);
+    {
+        bool isDropping = false;
+        for (const auto& drop : game.droppingBalls)
+        {
+            if (drop.targetIndex == i)
+            {
+                isDropping = true;
+                break;
+            }
+        }
+        if (!isDropping)
+            DrawFilledCircle(r, cx, firstY - i * pitch, STACK_BALL_RADIUS);
+    }
+
+    // 2. Draw the dropping balls at their current falling position
+    for (const auto& drop : game.droppingBalls)
+    {
+        DrawFilledCircle(r, cx, drop.y, STACK_BALL_RADIUS);
+    }
 
     const std::string bonusText = "+" + FormatNumber(UNUSED_BALL_POINTS);
     for (const BallBonusPopup& b : game.ballBonusPopups)
@@ -1812,6 +1871,31 @@ int main(int argc, char* argv[])
             [](const BallBonusPopup& b) { return b.timer <= 0.0f; }),
             game.ballBonusPopups.end());
 
+        // Animate dropping free balls down the chute
+        for (auto& drop : game.droppingBalls)
+        {
+            const float targetY = GetStackBallY(drop.targetIndex, game.ballsLeft);
+            drop.vy += 2400.0f * frameDt; // Gravity pulling it down
+            drop.y += drop.vy * frameDt;
+
+            if (drop.y >= targetY)
+            {
+                drop.y = targetY;
+                if (drop.bouncesLeft > 0)
+                {
+                    drop.vy = -drop.vy * 0.25f; // Small settling bounce
+                    drop.bouncesLeft--;
+                }
+                else
+                {
+                    drop.settled = true;
+                }
+            }
+        }
+        game.droppingBalls.erase(std::remove_if(game.droppingBalls.begin(), game.droppingBalls.end(),
+            [](const DroppingBall& d) { return d.settled; }),
+            game.droppingBalls.end());
+
         if (game.finale.scoreActive && !game.finale.ballsStarted && game.finale.shown >= game.finale.target)
         {
             game.finale.ballsStarted = true;
@@ -1870,7 +1954,7 @@ int main(int argc, char* argv[])
                 SetRouletteSpin(false);
                 if (rl.returned)
                 {
-                    game.ballsLeft++;
+                    AwardFreeBall(game);
                     PlaySfx(Sfx::RouletteWin);
                     PlaySfx(Sfx::FreeBall);
                 }
