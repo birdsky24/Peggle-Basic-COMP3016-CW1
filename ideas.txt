@@ -1,0 +1,10 @@
+Delay the opening of win screen by a bit to allow the player to see the score breakdown of the final shot.*
+Have the score breakdown appear on screen a little longer, maybe move it away from dead center on screen or don't allow shots until it disappears.*
+Have controls on main menu screen, under buttons.*
+Add a settings with an audio slider.*
+Have high score shown on win screen and when high score is beaten tell the player, say new high score.*
+Have the exe have an icon for taskbar and in folder.*
+Make it possible to merge leaderboards from different copies.*
+Add a drop animation for when a free ball is added. Ball falls down.*
+Add a medal after ULTRA EXTREME FEVER (when all pegs are hit). Display a small medal next to the score on the leaderboard as well.*
+Pegpop sounds isn't playing.*
