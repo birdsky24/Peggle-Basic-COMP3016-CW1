@@ -1,21 +1,21 @@
 #include "Level.h"
 #include "Config.h"
 
+#include <SDL3/SDL.h>
 #include <algorithm>
+#include <cmath>
 #include <random>
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-// One random number generator shared by everything in this file
 static std::mt19937& Rng()
 {
     static std::mt19937 rng{ std::random_device{}() };
     return rng;
 }
 
-// Adds a row of pegs centred on the launcher
 static void AddCentredRow(std::vector<Peg>& pegs, float y, int count, float spacing)
 {
     const float startX = LAUNCHER_X - (count - 1) * spacing / 2.0f;
@@ -28,17 +28,28 @@ static void AddCentredRow(std::vector<Peg>& pegs, float y, int count, float spac
     }
 }
 
-// Picks random pegs to be orange and one to be purple, the rest stay blue
+// Adds a circular ring of pegs evenly spaced around (cx, cy)
+static void AddRing(std::vector<Peg>& pegs, float cx, float cy, float radius, int count)
+{
+    for (int i = 0; i < count; ++i)
+    {
+        const float angle = (static_cast<float>(i) / static_cast<float>(count)) * (2.0f * SDL_PI_F);
+        Peg p;
+        p.x = cx + radius * std::cos(angle);
+        p.y = cy + radius * std::sin(angle);
+        pegs.push_back(p);
+    }
+}
+
 static void AssignPegTypes(std::vector<Peg>& pegs)
 {
     if (pegs.empty()) return;
 
-    // Shuffle the peg numbers, then the first ones become orange and the next one purple
+    // Shuffle the peg order: first 25 are Orange, 26th is Purple, remaining 74 are Blue
     std::vector<int> order(pegs.size());
     for (int i = 0; i < static_cast<int>(order.size()); ++i) order[i] = i;
     std::shuffle(order.begin(), order.end(), Rng());
 
-    // A level with very few pegs still keeps room for the purple one
     const int orangeCount = std::min(ORANGE_PEG_COUNT, static_cast<int>(pegs.size()) - 1);
 
     for (int i = 0; i < orangeCount; ++i)
@@ -50,14 +61,14 @@ static void AssignPegTypes(std::vector<Peg>& pegs)
 // Levels
 // ---------------------------------------------------------------------------
 
-// Level 1 - rows of alternating pegs
+// Level 1 - Alternating grid (100 pegs)
 static std::vector<Peg> BuildLevel1()
 {
     constexpr int   rows = 8;
-    constexpr int   colsLong = 13; // rows 1, 3, 5, 7
-    constexpr int   colsShort = 12; // rows 2, 4, 6, 8. This is done to make sure there are 100 pegs.
-    constexpr float spacing = 40.0f; // distance between pegs
-    constexpr float gridTop = 210.0f; // y of the first row
+    constexpr int   colsLong = 13;
+    constexpr int   colsShort = 12;
+    constexpr float spacing = 40.0f;
+    constexpr float gridTop = 210.0f;
 
     std::vector<Peg> pegs;
     for (int row = 0; row < rows; ++row)
@@ -68,7 +79,7 @@ static std::vector<Peg> BuildLevel1()
     return pegs;
 }
 
-// Level 2 - basic example may change later. Add a menu later, after beating level 1 to go to level 2. Add a main menu later to select levels.
+// Level 2 - Pyramid (100 pegs: sum of 1 to 12 is 78, plus filler rows or layout)
 static std::vector<Peg> BuildLevel2()
 {
     constexpr int   rows = 12;
@@ -81,12 +92,37 @@ static std::vector<Peg> BuildLevel2()
     return pegs;
 }
 
+// Level 3 - 5 Circular rings across the play area (5 x 20 = 100 pegs)
+static std::vector<Peg> BuildLevel3()
+{
+    std::vector<Peg> pegs;
+    constexpr float radius = 105.0f;
+    constexpr int countPerCircle = 20;
+
+    // 1. Center Circle (20 pegs)
+    AddRing(pegs, 400.0f, 310.0f, radius, countPerCircle);
+
+    // 2. Top-Left Circle (20 pegs)
+    AddRing(pegs, 185.0f, 195.0f, radius, countPerCircle);
+
+    // 3. Top-Right Circle (20 pegs)
+    AddRing(pegs, 615.0f, 195.0f, radius, countPerCircle);
+
+    // 4. Bottom-Left Circle (20 pegs)
+    AddRing(pegs, 185.0f, 425.0f, radius, countPerCircle);
+
+    // 5. Bottom-Right Circle (20 pegs)
+    AddRing(pegs, 615.0f, 425.0f, radius, countPerCircle);
+
+    return pegs;
+}
+
 // ---------------------------------------------------------------------------
 // Public functions
 // ---------------------------------------------------------------------------
 int LevelCount()
 {
-    return 2;
+    return 3; // Updated to 3
 }
 
 std::vector<Peg> BuildLevel(int levelNumber)
@@ -96,6 +132,7 @@ std::vector<Peg> BuildLevel(int levelNumber)
     {
     case 1: pegs = BuildLevel1(); break;
     case 2: pegs = BuildLevel2(); break;
+    case 3: pegs = BuildLevel3(); break; // Added Level 3
     default: break;
     }
 
@@ -105,7 +142,6 @@ std::vector<Peg> BuildLevel(int levelNumber)
 
 void MovePurplePeg(std::vector<Peg>& pegs)
 {
-    // Find the current purple peg (if it was deleted it doesn't count) and every blue peg left
     int oldPurple = -1;
     std::vector<int> blues;
     for (int i = 0; i < static_cast<int>(pegs.size()); ++i)
@@ -115,7 +151,6 @@ void MovePurplePeg(std::vector<Peg>& pegs)
         else if (pegs[i].type == PegType::Blue) blues.push_back(i);
     }
 
-    // No blue pegs left to pick, so the purple peg stays where it is
     if (blues.empty()) return;
 
     if (oldPurple != -1)
