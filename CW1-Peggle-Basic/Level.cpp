@@ -28,7 +28,6 @@ static void AddCentredRow(std::vector<Peg>& pegs, float y, int count, float spac
     }
 }
 
-// Adds a circular ring of pegs evenly spaced around (cx, cy)
 static void AddRing(std::vector<Peg>& pegs, float cx, float cy, float radius, int count)
 {
     for (int i = 0; i < count; ++i)
@@ -41,11 +40,63 @@ static void AddRing(std::vector<Peg>& pegs, float cx, float cy, float radius, in
     }
 }
 
+// Adds an oval (ellipse) of pegs with separate horizontal and vertical radii
+static void AddOval(std::vector<Peg>& pegs, float cx, float cy, float radiusX, float radiusY, int count)
+{
+    for (int i = 0; i < count; ++i)
+    {
+        const float angle = (static_cast<float>(i) / static_cast<float>(count)) * (2.0f * SDL_PI_F);
+        Peg p;
+        p.x = cx + radiusX * std::cos(angle);
+        p.y = cy + radiusY * std::sin(angle);
+        pegs.push_back(p);
+    }
+}
+
+struct Point { float x, y; };
+
+// Distributes 'count' pegs evenly along a multi-segment line/zigzag
+static void AddPolyline(std::vector<Peg>& pegs, const std::vector<Point>& pts, int count)
+{
+    if (pts.size() < 2 || count <= 0) return;
+
+    std::vector<float> segLens(pts.size() - 1);
+    float totalLen = 0.0f;
+    for (size_t i = 0; i < pts.size() - 1; ++i)
+    {
+        const float dx = pts[i + 1].x - pts[i].x;
+        const float dy = pts[i + 1].y - pts[i].y;
+        segLens[i] = std::sqrt(dx * dx + dy * dy);
+        totalLen += segLens[i];
+    }
+
+    if (totalLen <= 0.0001f) return;
+
+    for (int i = 0; i < count; ++i)
+    {
+        const float targetDist = (static_cast<float>(i) / static_cast<float>(count - 1)) * totalLen;
+        float acc = 0.0f;
+
+        for (size_t s = 0; s < segLens.size(); ++s)
+        {
+            if (targetDist <= acc + segLens[s] || s == segLens.size() - 1)
+            {
+                const float u = (segLens[s] > 0.0001f) ? (targetDist - acc) / segLens[s] : 0.0f;
+                Peg p;
+                p.x = pts[s].x + std::max(0.0f, std::min(1.0f, u)) * (pts[s + 1].x - pts[s].x);
+                p.y = pts[s].y + std::max(0.0f, std::min(1.0f, u)) * (pts[s + 1].y - pts[s].y);
+                pegs.push_back(p);
+                break;
+            }
+            acc += segLens[s];
+        }
+    }
+}
+
 static void AssignPegTypes(std::vector<Peg>& pegs)
 {
     if (pegs.empty()) return;
 
-    // Shuffle the peg order: first 25 are Orange, 26th is Purple, remaining 74 are Blue
     std::vector<int> order(pegs.size());
     for (int i = 0; i < static_cast<int>(order.size()); ++i) order[i] = i;
     std::shuffle(order.begin(), order.end(), Rng());
@@ -61,7 +112,6 @@ static void AssignPegTypes(std::vector<Peg>& pegs)
 // Levels
 // ---------------------------------------------------------------------------
 
-// Level 1 - Alternating grid (100 pegs)
 static std::vector<Peg> BuildLevel1()
 {
     constexpr int   rows = 8;
@@ -79,7 +129,6 @@ static std::vector<Peg> BuildLevel1()
     return pegs;
 }
 
-// Level 2 - Pyramid (100 pegs)
 static std::vector<Peg> BuildLevel2()
 {
     constexpr int   rows = 12;
@@ -92,7 +141,6 @@ static std::vector<Peg> BuildLevel2()
     return pegs;
 }
 
-// Level 3 - 5 Circular rings (5 x 20 = 100 pegs)
 static std::vector<Peg> BuildLevel3()
 {
     std::vector<Peg> pegs;
@@ -108,15 +156,16 @@ static std::vector<Peg> BuildLevel3()
     return pegs;
 }
 
-// Level 4 - Center vertical line with two large side circles (20 + 40 + 40 = 100 pegs)
+// Level 4 - 4 Ovals and an extended center line (4 x 20 + 20 = 100 pegs)
 static std::vector<Peg> BuildLevel4()
 {
     std::vector<Peg> pegs;
 
-    // 1. Center vertical line of 20 pegs
+    // 1. Center vertical line of 20 pegs (spanning Y=95 to Y=551, ~456px long)
     constexpr int   lineCount = 20;
-    constexpr float lineSpacing = 17.0f;
-    constexpr float lineStartY = 165.0f;
+    constexpr float lineSpacing = 24.0f; // Wider gaps between vertical pegs
+    constexpr float lineStartY = 95.0f;
+
     for (int i = 0; i < lineCount; ++i)
     {
         Peg p;
@@ -125,39 +174,39 @@ static std::vector<Peg> BuildLevel4()
         pegs.push_back(p);
     }
 
-    // 2. Left and Right large circles (40 pegs each)
-    constexpr int   circleCount = 40;
-    constexpr float circleRadius = 125.0f;
-    constexpr float circleY = 325.0f;
-    constexpr float leftCircleX = 225.0f;
-    constexpr float rightCircleX = 575.0f;
+    // 2. 4 Ovals (2 on the left, 2 on the right, 20 pegs each)
+    constexpr int   pegsPerOval = 20;
+    constexpr float ovalRadiusX = 95.0f;  // Width radius
+    constexpr float ovalRadiusY = 110.0f; // Height radius (stretched to increase perimeter & gaps)
+    constexpr float topOvalY = 190.0f;
+    constexpr float bottomOvalY = 440.0f;
+    constexpr float leftOvalX = 225.0f;
+    constexpr float rightOvalX = 575.0f;
 
-    AddRing(pegs, leftCircleX, circleY, circleRadius, circleCount);
-    AddRing(pegs, rightCircleX, circleY, circleRadius, circleCount);
+    // Left side ovals
+    AddOval(pegs, leftOvalX, topOvalY, ovalRadiusX, ovalRadiusY, pegsPerOval);
+    AddOval(pegs, leftOvalX, bottomOvalY, ovalRadiusX, ovalRadiusY, pegsPerOval);
+
+    // Right side ovals
+    AddOval(pegs, rightOvalX, topOvalY, ovalRadiusX, ovalRadiusY, pegsPerOval);
+    AddOval(pegs, rightOvalX, bottomOvalY, ovalRadiusX, ovalRadiusY, pegsPerOval);
 
     return pegs;
 }
 
-// Add above LevelCount():
-
-// Level 5 - 7 vertical columns of pegs equally spaced across the play area (100 pegs)
 static std::vector<Peg> BuildLevel5()
 {
     std::vector<Peg> pegs;
 
     constexpr int   columnCount = 7;
-    constexpr float startY = 180.0f;
-    constexpr float endY = 480.0f;
+    constexpr float startY = 100.0f;
+    constexpr float endY = 500.0f;
     constexpr float columnHeight = endY - startY;
-
-    // 8 equal gaps between walls and the 7 columns (87.5px each)
     constexpr float gapX = (PLAY_RIGHT - PLAY_LEFT) / (columnCount + 1.0f);
 
     for (int col = 0; col < columnCount; ++col)
     {
         const float x = PLAY_LEFT + (col + 1) * gapX;
-
-        // 6 columns with 14 pegs + 1 center column with 16 pegs = 100 pegs
         const int count = (col == 3) ? 16 : 14;
         const float spacing = columnHeight / static_cast<float>(count - 1);
 
@@ -173,13 +222,40 @@ static std::vector<Peg> BuildLevel5()
     return pegs;
 }
 
-// Update LevelCount():
-int LevelCount()
+// Level 6 - 5 Lightning Bolts (5 x 20 = 100 pegs)
+static std::vector<Peg> BuildLevel6()
 {
-    return 5; // Updated to 5 levels
+    std::vector<Peg> pegs;
+
+    constexpr int boltCount = 5;
+    constexpr int pegsPerBolt = 20;
+
+    for (int k = 0; k < boltCount; ++k)
+    {
+        // 5 bolts centered across the board (Bolt 2 is directly under the launcher at 400px)
+        const float baseX = 185.0f + k * 107.5f;
+
+        const std::vector<Point> pts = {
+            { baseX,          120.0f }, // Top point (starts much higher up)
+            { baseX - 125.0f, 250.0f }, // Left knee
+            { baseX + 120.0f, 380.0f }, // Right knee (wider sweep)
+            { baseX - 60.0f,  515.0f }  // Bottom point (stretches deep towards the bucket)
+        };
+
+        AddPolyline(pegs, pts, pegsPerBolt);
+    }
+
+    return pegs;
 }
 
-// Update BuildLevel():
+// ---------------------------------------------------------------------------
+// Public functions
+// ---------------------------------------------------------------------------
+int LevelCount()
+{
+    return 6; // Updated to 6 levels
+}
+
 std::vector<Peg> BuildLevel(int levelNumber)
 {
     std::vector<Peg> pegs;
@@ -189,7 +265,8 @@ std::vector<Peg> BuildLevel(int levelNumber)
     case 2: pegs = BuildLevel2(); break;
     case 3: pegs = BuildLevel3(); break;
     case 4: pegs = BuildLevel4(); break;
-    case 5: pegs = BuildLevel5(); break; // Added Level 5
+    case 5: pegs = BuildLevel5(); break;
+    case 6: pegs = BuildLevel6(); break; // Added Level 6
     default: break;
     }
 

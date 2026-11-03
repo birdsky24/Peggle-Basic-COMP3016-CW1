@@ -483,6 +483,10 @@ static std::vector<Button> GetScreenButtons(Screen screen, int currentLevel, int
         y += btnStep;
 
         buttons.push_back({ { x, y, 300.0f, btnH }, "LEVEL SELECT", Action::OpenLevelSelect, 0 });
+        y += btnStep; // <--- Add this
+
+        // Retry button added to the end
+        buttons.push_back({ { x, y, 300.0f, btnH }, "RETRY", Action::Restart, 0 });
     }
     return buttons;
 }
@@ -2381,7 +2385,7 @@ int main(int argc, char* argv[])
         {
             const bool hoverOn = !levelSelectOpen && !settingsOpen;
             DrawDim(renderer, 170);
-            DrawPanel(renderer, { LAUNCHER_X - 210.0f, 90.0f, 420.0f, 400.0f });
+            DrawPanel(renderer, { LAUNCHER_X - 210.0f, 80.0f, 420.0f, 435.0f });
 
             const std::string scoreLine = "SCORE " + FormatNumber(game.score);
             if (screen == Screen::Paused)
