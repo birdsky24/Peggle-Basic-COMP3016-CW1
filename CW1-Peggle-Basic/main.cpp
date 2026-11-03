@@ -130,6 +130,11 @@ struct GameState
     std::vector<BallBonusPopup> ballBonusPopups;
     std::vector<DroppingBall> droppingBalls;
 
+    // Anti-Stuck Tracking
+    float stuckTimer = 0.0f;
+    float stuckCheckX = 0.0f;
+    float stuckCheckY = 0.0f;
+
     // Ultra Fever Ribbon Popup
     bool ribbonActive = false;
     float ribbonTimer = 0.0f;
@@ -1134,6 +1139,85 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
             QueueRemainingPegs(pegs, hitOrder);
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Anti-Stuck / Rest Detection:
+    // If the ball stays within a 12px radius for 1.0 second, remove touching pegs
+    // -----------------------------------------------------------------------
+    const float sDx = ball.x - game.stuckCheckX;
+    const float sDy = ball.y - game.stuckCheckY;
+    constexpr float STUCK_RADIUS = 12.0f;
+
+    if (sDx * sDx + sDy * sDy < STUCK_RADIUS * STUCK_RADIUS)
+    {
+        game.stuckTimer += dt;
+    }
+    else
+    {
+        game.stuckTimer = 0.0f;
+        game.stuckCheckX = ball.x;
+        game.stuckCheckY = ball.y;
+    }
+
+    if (game.stuckTimer >= 1.0f) // Stuck for 1 second
+    {
+        bool freedAny = false;
+        const float touchDist = BALL_RADIUS + PEG_RADIUS + 4.0f;
+
+        for (int i = 0; i < static_cast<int>(pegs.size()); ++i)
+        {
+            Peg& peg = pegs[i];
+            if (peg.removed) continue;
+
+            const float pdx = ball.x - peg.x;
+            const float pdy = ball.y - peg.y;
+
+            if (pdx * pdx + pdy * pdy <= touchDist * touchDist)
+            {
+                // If touching a peg that wasn't scored yet, score it now
+                if (!peg.hit)
+                {
+                    peg.hit = true;
+                    if (peg.type == PegType::Orange)
+                        game.orangeHit++;
+
+                    const int pegPoints = BasePegScore(peg.type) * FeverMultiplier(game.orangeHit);
+                    shot.pegScoreSum += pegPoints;
+                    shot.pegsHit++;
+                    AddPegPopup(game, peg, pegPoints);
+                    PlaySfx(Sfx::PegHit, std::min((shot.pegsHit - 1) * PEG_HIT_PITCH_STEP, PEG_HIT_PITCH_MAX));
+                    if (peg.type == PegType::Purple)
+                        PlaySfx(Sfx::PurplePeg);
+                    CheckFreeBalls(game);
+
+                    if (peg.type == PegType::Orange && game.orangeHit == game.totalOrange)
+                    {
+                        game.feverActive = true;
+                        PlaySfx(Sfx::Applause);
+                        game.ultraFever = AllPegsCleared(pegs);
+                        game.feverZoomOut = true;
+                        game.feverZoomTimer = 0.0f;
+                        game.feverZoomStart = game.camZoom;
+                    }
+                }
+
+                // Delete the peg immediately so the ball can drop through
+                peg.removed = true;
+                PlaySfx(Sfx::PegRemove);
+
+                // Erase from hitOrder so it isn't popped a second time at the end
+                hitOrder.erase(std::remove(hitOrder.begin(), hitOrder.end(), i), hitOrder.end());
+                freedAny = true;
+            }
+        }
+
+        if (freedAny)
+        {
+            game.stuckTimer = 0.0f;
+            // Downward nudge so gravity takes over
+            ball.vy = std::max(ball.vy, 100.0f);
+        }
+    }
 }
 
 static std::mt19937& GameRng()
@@ -1744,6 +1828,11 @@ int main(int argc, char* argv[])
                         game.shot.orangeAtStart = game.orangeHit;
                         game.freeBall = false;
                         game.slowmoTriggered = false;
+
+                        // Reset anti-stuck detector
+                        game.stuckTimer = 0.0f;
+                        game.stuckCheckX = ball.x;
+                        game.stuckCheckY = ball.y;
                     }
                 }
                 else

@@ -79,7 +79,7 @@ static std::vector<Peg> BuildLevel1()
     return pegs;
 }
 
-// Level 2 - Pyramid (100 pegs: sum of 1 to 12 is 78, plus filler rows or layout)
+// Level 2 - Pyramid (100 pegs)
 static std::vector<Peg> BuildLevel2()
 {
     constexpr int   rows = 12;
@@ -92,27 +92,48 @@ static std::vector<Peg> BuildLevel2()
     return pegs;
 }
 
-// Level 3 - 5 Circular rings across the play area (5 x 20 = 100 pegs)
+// Level 3 - 5 Circular rings (5 x 20 = 100 pegs)
 static std::vector<Peg> BuildLevel3()
 {
     std::vector<Peg> pegs;
     constexpr float radius = 105.0f;
     constexpr int countPerCircle = 20;
 
-    // 1. Center Circle (20 pegs)
     AddRing(pegs, 400.0f, 310.0f, radius, countPerCircle);
-
-    // 2. Top-Left Circle (20 pegs)
     AddRing(pegs, 185.0f, 195.0f, radius, countPerCircle);
-
-    // 3. Top-Right Circle (20 pegs)
     AddRing(pegs, 615.0f, 195.0f, radius, countPerCircle);
-
-    // 4. Bottom-Left Circle (20 pegs)
     AddRing(pegs, 185.0f, 425.0f, radius, countPerCircle);
-
-    // 5. Bottom-Right Circle (20 pegs)
     AddRing(pegs, 615.0f, 425.0f, radius, countPerCircle);
+
+    return pegs;
+}
+
+// Level 4 - Center vertical line with two large side circles (20 + 40 + 40 = 100 pegs)
+static std::vector<Peg> BuildLevel4()
+{
+    std::vector<Peg> pegs;
+
+    // 1. Center vertical line of 20 pegs
+    constexpr int   lineCount = 20;
+    constexpr float lineSpacing = 17.0f;
+    constexpr float lineStartY = 165.0f;
+    for (int i = 0; i < lineCount; ++i)
+    {
+        Peg p;
+        p.x = LAUNCHER_X;
+        p.y = lineStartY + i * lineSpacing;
+        pegs.push_back(p);
+    }
+
+    // 2. Left and Right large circles (40 pegs each)
+    constexpr int   circleCount = 40;
+    constexpr float circleRadius = 125.0f;
+    constexpr float circleY = 325.0f;
+    constexpr float leftCircleX = 225.0f;
+    constexpr float rightCircleX = 575.0f;
+
+    AddRing(pegs, leftCircleX, circleY, circleRadius, circleCount);
+    AddRing(pegs, rightCircleX, circleY, circleRadius, circleCount);
 
     return pegs;
 }
@@ -122,7 +143,7 @@ static std::vector<Peg> BuildLevel3()
 // ---------------------------------------------------------------------------
 int LevelCount()
 {
-    return 3; // Updated to 3
+    return 4; // Updated to 4 levels
 }
 
 std::vector<Peg> BuildLevel(int levelNumber)
@@ -132,7 +153,8 @@ std::vector<Peg> BuildLevel(int levelNumber)
     {
     case 1: pegs = BuildLevel1(); break;
     case 2: pegs = BuildLevel2(); break;
-    case 3: pegs = BuildLevel3(); break; // Added Level 3
+    case 3: pegs = BuildLevel3(); break;
+    case 4: pegs = BuildLevel4(); break; // Added Level 4
     default: break;
     }
 
