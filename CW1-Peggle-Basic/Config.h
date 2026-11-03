@@ -89,10 +89,25 @@ constexpr float FEVER_CIRCLE_Y = PLAY_BOTTOM - 20.0f;
 constexpr float FEVER_SLOWMO = 0.05f; // speed of time while it is slowed, 1.0 = normal speed
 constexpr float SLOWMO_TRIGGER_DISTANCE = 90.0f; // time slows when the ball is this close to the last orange peg and heading for it
 
+// Final shot camera. The view zooms in on the ball during the slow motion, then zooms out after the last orange peg is hit.
+constexpr float SLOWMO_ZOOM = 2.5f;                 // how many times bigger the view is when fully zoomed in
+constexpr float CAMERA_ZOOM_SPEED = 6.0f;           // how quickly it zooms in, bigger is faster
+constexpr float EXTREME_FEVER_ZOOM_OUT_TIME = 3.0f; // seconds to zoom out, the EXTREME FEVER! text shrinks and fades over the same time
+constexpr float EXTREME_FEVER_TEXT_SCALE = 6.0f;    // text size when it appears (the debug font is 8 pixels per letter at scale 1)
+constexpr float EXTREME_FEVER_TEXT_END_SCALE = 3.0f;
+
+// Final shot score. After the ball lands in a bucket the fireworks play and every peg left is deleted (no points),
+// then FEVER SCORE counts up, then the balls left are cashed in.
+constexpr float FEVER_FIREWORKS_TIME = 2.0f;        // seconds of fireworks before FEVER SCORE appears
+constexpr float FEVER_SCORE_COUNT_TIME = 1.5f;      // seconds for the number to count up to the shot + bucket total
+constexpr float FEVER_SCORE_HOLD_TIME = 1.5f;       // seconds the finished number stays up before the level clear screen
+constexpr float FEVER_SCORE_TITLE_SCALE = 6.0f;
+constexpr float FEVER_SCORE_NUMBER_SCALE = 8.0f;
+
 // Popup shown at the end of each shot
 constexpr float POPUP_TIME = 1.5f; // seconds
 constexpr float POPUP_FADE_TIME = 0.3f; // it fades out over the last bit of POPUP_TIME
-constexpr float LEVEL_CLEAR_POPUP_TIME = 2.5f; // seconds the last shot's popup stays up before the level clear screen appears
+constexpr float LEVEL_CLEAR_POPUP_TIME = 2.5f; // no longer used, the final shot shows FEVER SCORE instead (see FEVER_SCORE_* below)
 
 // Balls left are cashed in one by one (top of the stack first) during the final shot's breakdown
 constexpr float BALL_BONUS_MAX_DELAY = 0.2f; // longest gap between two balls

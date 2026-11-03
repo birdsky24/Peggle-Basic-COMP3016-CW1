@@ -77,6 +77,20 @@ struct BallBonusPopup
     float timer = 0.0f;
 };
 
+// The final shot's breakdown: fireworks while the pegs are cleared, then FEVER SCORE counting up
+struct Finale
+{
+    bool fireworksActive = false; // the shot has landed in a bucket, the fireworks are playing and the pegs are being cleared
+    float fireworksTimer = 0.0f;
+    bool scoreActive = false;     // FEVER SCORE is on screen
+    bool ballsStarted = false;    // the balls left have started to be cashed in
+    long long target = 0;         // what the number counts up to (grows by 10,000 for each ball cashed in)
+    long long shown = 0;          // the number on screen, this is also added to the total score as it climbs
+    double shownF = 0.0;
+    float timer = 0.0f;           // time since FEVER SCORE appeared
+    float holdTimer = 0.0f;       // time the finished number has been on screen
+};
+
 struct GameState
 {
     long long score = 0;
@@ -105,6 +119,17 @@ struct GameState
     int ballBonusLayoutCount = 0; // how many balls the stack had at the start, so the spacing doesn't change
     float ballBonusTimer = 0.0f;
     std::vector<BallBonusPopup> ballBonusPopups;
+
+    // Final shot
+    Finale finale;
+
+    // Camera. camZoom is 0 for the normal view and 1 when fully zoomed in on the ball (SLOWMO_ZOOM times bigger).
+    float camZoom = 0.0f;
+    float camFocusX = LAUNCHER_X;
+    float camFocusY = (PLAY_TOP + PLAY_BOTTOM) / 2.0f;
+    bool  feverZoomOut = false;   // EXTREME FEVER text is up and the view is zooming back out
+    float feverZoomTimer = 0.0f;
+    float feverZoomStart = 0.0f;  // how zoomed in the view was when the last orange peg was hit
 };
 
 // The box in the middle of the screen at the end of each shot
@@ -730,6 +755,18 @@ static bool BounceOffTriangle(Ball& ball, const Triangle& tri)
     return ny < -0.3f; // the surface faces upwards, so it is the rim and not the inside wall
 }
 
+static std::mt19937& GameRng();
+
+// Adds every peg that hasn't been hit to the end of the deletion queue, in a random order
+static void QueueRemainingPegs(std::vector<Peg>& pegs, std::vector<int>& hitOrder)
+{
+    std::vector<int> rest;
+    for (int i = 0; i < static_cast<int>(pegs.size()); ++i)
+        if (!pegs[i].removed && !pegs[i].hit) rest.push_back(i);
+    std::shuffle(rest.begin(), rest.end(), GameRng());
+    hitOrder.insert(hitOrder.end(), rest.begin(), rest.end());
+}
+
 // hitOrder holds the index of every peg hit by this shot, in the order they were hit
 static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hitOrder, GameState& game, float dt)
 {
@@ -892,6 +929,11 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
                 game.feverActive = true;
                 PlaySfx(Sfx::Applause);
 
+                // EXTREME FEVER text appears and the view slowly zooms back out
+                game.feverZoomOut = true;
+                game.feverZoomTimer = 0.0f;
+                game.feverZoomStart = game.camZoom;
+
                 // Kick the bucket, the ball came straight off the bucket's edge into the last orange peg
                 if (shot.edgeSincePeg)
                     AddStyle(game, "KICK THE BUCKET", KICK_THE_BUCKET_POINTS, peg.x, peg.y);
@@ -1003,6 +1045,11 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
             game.ultraFever = AllPegsCleared(pegs);
             game.bucketPoints = game.ultraFever ? ULTRA_BUCKET_POINTS : FEVER_BUCKET_POINTS[bucket];
             PlaySfx(game.bucketPoints >= ULTRA_BUCKET_POINTS ? Sfx::FeverBucketTop : Sfx::FeverBucket); // the 100,000 bucket has its own sound
+
+            // While the fireworks play every peg left is deleted one by one (these don't award points)
+            game.finale.fireworksActive = true;
+            game.finale.fireworksTimer = 0.0f;
+            QueueRemainingPegs(pegs, hitOrder);
         }
     }
 }
@@ -1021,9 +1068,26 @@ static void FinishShot(GameState& game, std::vector<Peg>& pegs, Popup& popup)
     const long long pegTotal = static_cast<long long>(shot.pegScoreSum) * shot.pegsHit;
     const long long shotScore = pegTotal + shot.stylePoints;
 
-    popup.lines.clear();
+    // The final shot of the level has no pop-up, FEVER SCORE counts up to its total instead.
+    // The total is added to the score as the number climbs (see the main loop).
     if (game.feverActive)
-        popup.lines.push_back({ game.ultraFever ? "ULTRA EXTREME FEVER!" : "EXTREME FEVER!", 3.0f, COL_ORANGE });
+    {
+        Finale& fin = game.finale;
+        fin.scoreActive = true;
+        fin.ballsStarted = false;
+        fin.target = shotScore + game.bucketPoints; // the balls left are added on to this as they are cashed in
+        fin.shown = 0;
+        fin.shownF = 0.0;
+        fin.timer = 0.0f;
+        fin.holdTimer = 0.0f;
+
+        game.levelComplete = true;
+        game.shotInProgress = false;
+        popup = Popup();
+        return;
+    }
+
+    popup.lines.clear();
 
     // Same layout as Peggle: peg points x pegs hit, the total, then the style points
     popup.lines.push_back({ FormatNumber(shot.pegScoreSum) + " X " + std::to_string(shot.pegsHit) + " PEGS", 3.0f, COL_YELLOW });
@@ -1041,34 +1105,10 @@ static void FinishShot(GameState& game, std::vector<Peg>& pegs, Popup& popup)
     else if (freeBalls > 1)
         popup.lines.push_back({ std::to_string(freeBalls) + " FREE BALLS!", 3.0f, COL_CYAN });
 
-    if (game.feverActive)
-    {
-        const long long ballBonus = static_cast<long long>(game.ballsLeft) * UNUSED_BALL_POINTS;
-        const long long feverScore = shotScore + game.bucketPoints + ballBonus;
+    game.score += shotScore;
 
-        popup.lines.push_back({ "BUCKET +" + FormatNumber(game.bucketPoints), 2.0f, COL_YELLOW });
-        popup.lines.push_back({ "BALLS LEFT " + std::to_string(game.ballsLeft) + " X " + FormatNumber(UNUSED_BALL_POINTS) + " +" + FormatNumber(ballBonus), 2.0f, COL_YELLOW });
-        popup.lines.push_back({ "FEVER SCORE +" + FormatNumber(feverScore), 3.0f, COL_WHITE });
-
-        game.score += feverScore;
-        game.levelComplete = true;
-
-        // Start cashing in the balls left (the stack is drawn from ballBonusShown until it is empty)
-        if (game.ballsLeft > 0)
-        {
-            game.ballBonusActive = true;
-            game.ballBonusShown = game.ballsLeft;
-            game.ballBonusLayoutCount = game.ballsLeft;
-            game.ballBonusTimer = 0.0f;
-        }
-    }
-    else
-    {
-        game.score += shotScore;
-
-        // The purple peg moves for the next shot
-        MovePurplePeg(pegs);
-    }
+    // The purple peg moves for the next shot
+    MovePurplePeg(pegs);
 
     // Any shot that didn't land in the bucket ends the Mad Skillz streak
     if (!game.freeBall) game.bucketStreak = 0;
@@ -1085,8 +1125,7 @@ static void FinishShot(GameState& game, std::vector<Peg>& pegs, Popup& popup)
     }
     else
     {
-        // The final shot of a level stays up longer so its breakdown can be read before the win screen
-        popup.timer = game.levelComplete ? LEVEL_CLEAR_POPUP_TIME : POPUP_TIME;
+        popup.timer = POPUP_TIME;
     }
     game.shotInProgress = false;
 }
@@ -1307,6 +1346,64 @@ static void DrawRoulette(SDL_Renderer* r, const Roulette& roulette)
     }
 }
 
+// The part of the world texture that is shown while the view is zoomed in
+static SDL_FRect CameraSource(const GameState& game)
+{
+    const float z = game.camZoom;
+    const float factor = 1.0f + (SLOWMO_ZOOM - 1.0f) * z;
+    const float centreX = (PLAY_LEFT + PLAY_RIGHT) / 2.0f;
+    const float centreY = (PLAY_TOP + PLAY_BOTTOM) / 2.0f;
+
+    // The view follows the ball, and slides back to the middle as it zooms out
+    const float fx = centreX + (game.camFocusX - centreX) * z;
+    const float fy = centreY + (game.camFocusY - centreY) * z;
+
+    const float w = WINDOW_W / factor;
+    const float h = WINDOW_H / factor;
+
+    // Kept inside the play area so nothing beyond the walls is shown (eased in so the view doesn't jump)
+    const float s = std::min(1.0f, z / 0.1f);
+    const float loX = PLAY_LEFT * s;
+    const float hiX = std::max(loX, WINDOW_W - BORDER_RIGHT * s - w);
+    const float loY = PLAY_TOP * s;
+    const float hiY = std::max(loY, WINDOW_H - BORDER_BOTTOM * s - h);
+
+    return { std::max(loX, std::min(fx - w / 2.0f, hiX)), std::max(loY, std::min(fy - h / 2.0f, hiY)), w, h };
+}
+
+// Big EXTREME FEVER! text when the last orange peg is hit. It shrinks and fades out as the view zooms out.
+static void DrawExtremeFeverText(SDL_Renderer* r, const GameState& game)
+{
+    const float u = std::max(0.0f, std::min(1.0f, game.feverZoomTimer / EXTREME_FEVER_ZOOM_OUT_TIME));
+    const float ease = u * u * (3.0f - 2.0f * u);
+    const float scale = EXTREME_FEVER_TEXT_SCALE + (EXTREME_FEVER_TEXT_END_SCALE - EXTREME_FEVER_TEXT_SCALE) * ease;
+    const float fade = std::max(0.0f, std::min(1.0f, (1.0f - u) / 0.5f)); // full for the first half, then fades
+    const std::string text = "EXTREME FEVER!";
+    const float y = (PLAY_TOP + PLAY_BOTTOM) / 2.0f - 4.0f * scale;
+    DrawOutlinedText(r, text, LAUNCHER_X - TextWidth(text, scale) / 2.0f, y, scale, COL_ORANGE, static_cast<Uint8>(255.0f * fade));
+}
+
+// FEVER SCORE and the number counting up to the final shot's total
+static void DrawFeverScore(SDL_Renderer* r, const GameState& game)
+{
+    const Finale& fin = game.finale;
+    const Uint8 alpha = static_cast<Uint8>(255.0f * std::max(0.0f, std::min(1.0f, fin.timer / 0.2f)));
+
+    const std::string title = "FEVER SCORE";
+    const std::string number = FormatNumber(fin.shown);
+    const float titleScale = FEVER_SCORE_TITLE_SCALE;
+    const float numberScale = std::min(FEVER_SCORE_NUMBER_SCALE, 640.0f / (8.0f * static_cast<float>(std::max<size_t>(number.size(), 1))));
+
+    const float top = (PLAY_TOP + PLAY_BOTTOM) / 2.0f - 70.0f;
+    if (game.ultraFever)
+    {
+        const std::string ultra = "ULTRA EXTREME FEVER!";
+        DrawOutlinedText(r, ultra, LAUNCHER_X - TextWidth(ultra, 3.0f) / 2.0f, top - 36.0f, 3.0f, COL_ORANGE, alpha);
+    }
+    DrawOutlinedText(r, title, LAUNCHER_X - TextWidth(title, titleScale) / 2.0f, top, titleScale, { 210, 230, 255, 255 }, alpha);
+    DrawOutlinedText(r, number, LAUNCHER_X - TextWidth(number, numberScale) / 2.0f, top + 8.0f * titleScale + 16.0f, numberScale, { 255, 170, 30, 255 }, alpha);
+}
+
 // A box in the top border, drawn the same way as the menu buttons
 static void DrawHudBox(SDL_Renderer* r, const SDL_FRect& box, const std::string& text)
 {
@@ -1362,6 +1459,11 @@ int main(int argc, char* argv[])
     }
     SDL_SetRenderVSync(renderer, 1);
     AudioInit(); // if this fails the game just has no sound
+
+    // The play area is drawn into this first so it can be zoomed (slow motion and extreme fever). If it can't be made there is no zoom.
+    SDL_Texture* worldTex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, WINDOW_W, WINDOW_H);
+    if (worldTex) SDL_SetTextureScaleMode(worldTex, SDL_SCALEMODE_LINEAR);
+    else SDL_Log("Zoom texture failed: %s", SDL_GetError());
 
     Ball  ball;
     std::vector<Peg> pegs;
@@ -1495,7 +1597,7 @@ int main(int argc, char* argv[])
 
                 if (screen == Screen::Playing)
                 {
-                    if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete && !game.roulette.active)
+                    if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete && !game.feverActive && !game.roulette.active)
                     {
                         float dirX, dirY;
                         GetAimDirection(mouseX, mouseY, dirX, dirY);
@@ -1648,6 +1750,18 @@ int main(int argc, char* argv[])
         game.ballBonusPopups.erase(std::remove_if(game.ballBonusPopups.begin(), game.ballBonusPopups.end(),
                                                   [](const BallBonusPopup& b) { return b.timer <= 0.0f; }),
                                    game.ballBonusPopups.end());
+        // FEVER SCORE counts up to the shot's total first, then the balls left are cashed in
+        if (game.finale.scoreActive && !game.finale.ballsStarted && game.finale.shown >= game.finale.target)
+        {
+            game.finale.ballsStarted = true;
+            if (game.ballsLeft > 0)
+            {
+                game.ballBonusActive = true;
+                game.ballBonusShown = game.ballsLeft;
+                game.ballBonusLayoutCount = game.ballsLeft;
+                game.ballBonusTimer = 0.0f;
+            }
+        }
         if (game.ballBonusActive)
         {
             const float interval = std::min(BALL_BONUS_MAX_DELAY, BALL_BONUS_TOTAL_TIME / static_cast<float>(game.ballBonusLayoutCount));
@@ -1657,12 +1771,33 @@ int main(int argc, char* argv[])
                 game.ballBonusShown--;
                 game.ballBonusPopups.push_back({ game.ballBonusShown, BALL_BONUS_POPUP_TIME });
                 PlaySfx(Sfx::PegRemove);
+                game.finale.target += UNUSED_BALL_POINTS; // the number goes up as each ball is cashed in
                 game.ballBonusTimer -= interval;
             }
             if (game.ballBonusShown <= 0)
             {
                 game.ballBonusActive = false;
                 game.ballsLeft = 0; // all cashed in, so the stack stays empty
+            }
+        }
+
+        // The fever score number climbs towards its target and the total score goes up with it
+        if (game.finale.scoreActive)
+        {
+            Finale& fin = game.finale;
+            fin.timer += frameDt;
+
+            const double speed = std::max(static_cast<double>(fin.target) / FEVER_SCORE_COUNT_TIME, 100000.0);
+            fin.shownF = std::min(static_cast<double>(fin.target), fin.shownF + speed * frameDt);
+            const long long newShown = static_cast<long long>(fin.shownF);
+            game.score += newShown - fin.shown;
+            fin.shown = newShown;
+
+            // Once every ball is cashed in the finished number stays up for a moment
+            if (fin.ballsStarted && !game.ballBonusActive && fin.shown >= fin.target)
+            {
+                fin.holdTimer += frameDt;
+                if (fin.holdTimer >= FEVER_SCORE_HOLD_TIME) fin.scoreActive = false;
             }
         }
 
@@ -1689,6 +1824,33 @@ int main(int argc, char* argv[])
             if (rl.timer >= ROULETTE_TIME) rl.active = false;
         }
 
+        // ---- Camera ----
+        // Zooms in on the ball during the slow motion before the last orange peg, then zooms out over a few seconds once it is hit
+        if (ball.active)
+        {
+            game.camFocusX = ball.x;
+            game.camFocusY = ball.y;
+        }
+        if (game.feverZoomOut)
+        {
+            game.feverZoomTimer += frameDt;
+            const float u = std::min(1.0f, game.feverZoomTimer / EXTREME_FEVER_ZOOM_OUT_TIME);
+            game.camZoom = game.feverZoomStart * (1.0f - u * u * (3.0f - 2.0f * u));
+            if (u >= 1.0f)
+            {
+                game.feverZoomOut = false;
+                game.camZoom = 0.0f;
+            }
+        }
+        else if (ball.active && !game.feverActive && game.approachingLastOrange)
+            game.camZoom += (1.0f - game.camZoom) * std::min(1.0f, frameDt * CAMERA_ZOOM_SPEED);
+        else
+            game.camZoom = std::max(0.0f, game.camZoom - frameDt * CAMERA_ZOOM_SPEED * 0.5f);
+
+        // The fireworks play for a set time before FEVER SCORE appears
+        if (game.finale.fireworksActive)
+            game.finale.fireworksTimer += frameDt;
+
         // ---- Update (fixed timestep) ----
         // Time slows just before the last orange peg is hit and goes back to normal as soon as it is hit
         if (ball.active)
@@ -1713,7 +1875,9 @@ int main(int argc, char* argv[])
         {
             // The gap between deletions shrinks the more pegs there are, so it takes the same total time (up to a maximum gap)
             if (removeCount == 0) removeCount = static_cast<int>(hitOrder.size());
-            const float removeInterval = std::min(PEG_REMOVE_MAX_DELAY, PEG_REMOVE_TOTAL_TIME / removeCount);
+            // After the last orange peg the pegs are cleared over the length of the fireworks
+            const float removeTotal = game.finale.fireworksActive ? FEVER_FIREWORKS_TIME : PEG_REMOVE_TOTAL_TIME;
+            const float removeInterval = std::min(PEG_REMOVE_MAX_DELAY, removeTotal / removeCount);
 
             removeTimer += frameDt;
             while (removeTimer >= removeInterval && !hitOrder.empty())
@@ -1731,7 +1895,9 @@ int main(int argc, char* argv[])
         }
 
         // Shot is finished and the hit pegs are gone, so the shot is scored
-        if (game.shotInProgress && !ball.active && hitOrder.empty())
+        // (after the last orange peg it also waits for the fireworks to finish)
+        if (game.shotInProgress && !ball.active && hitOrder.empty()
+            && (!game.feverActive || game.finale.fireworksTimer >= FEVER_FIREWORKS_TIME))
             FinishShot(game, pegs, popup);
 
         if (popup.timer > 0.0f)
@@ -1739,13 +1905,16 @@ int main(int argc, char* argv[])
 
         // Once the shot popup is gone, check if the level is cleared or out of shots
         if (screen == Screen::Playing && !game.shotInProgress && !ball.active && hitOrder.empty() && popup.timer <= 0.0f && !game.roulette.active
-            && !game.ballBonusActive && game.ballBonusPopups.empty())
+            && !game.ballBonusActive && game.ballBonusPopups.empty() && !game.finale.scoreActive)
         {
             if (game.levelComplete) screen = Screen::LevelClear;
             else if (game.ballsLeft <= 0) screen = Screen::Fail;
         }
 
         // ---- Render ----
+        // While zoomed the play area is drawn into a texture, which is then drawn bigger (borders and HUD stay normal)
+        const bool zoomed = (worldTex != nullptr) && game.camZoom > 0.001f;
+        if (zoomed) SDL_SetRenderTarget(renderer, worldTex);
         SDL_SetRenderDrawColor(renderer, 20, 24, 40, 255);
         SDL_RenderClear(renderer);
 
@@ -1775,7 +1944,8 @@ int main(int argc, char* argv[])
             for (int k = 0; k <= FEVER_BUCKET_COUNT; ++k)
                 DrawFilledCircle(renderer, FeverCircleX(k), FEVER_CIRCLE_Y, FEVER_CIRCLE_RADIUS);
 
-            const bool ultra = AllPegsCleared(pegs);
+            // Once the ball has landed the pegs are all deleted, so what the shot cleared was worked out at that moment
+            const bool ultra = game.finale.fireworksActive ? game.ultraFever : AllPegsCleared(pegs);
             for (int k = 0; k < FEVER_BUCKET_COUNT; ++k)
             {
                 const std::string label = FormatNumber(ultra ? ULTRA_BUCKET_POINTS : FEVER_BUCKET_POINTS[k]);
@@ -1812,7 +1982,7 @@ int main(int argc, char* argv[])
         DrawFilledCircle(renderer, LAUNCHER_X, LAUNCHER_Y, 14.0f);
 
         // Aim guide only shows when no ball is in play and the hit pegs are deleted
-        if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete && !game.roulette.active)
+        if (!ball.active && hitOrder.empty() && game.ballsLeft > 0 && !game.levelComplete && !game.feverActive && !game.roulette.active)
         {
             float dirX, dirY;
             GetAimDirection(mouseX, mouseY, dirX, dirY);
@@ -1829,6 +1999,15 @@ int main(int argc, char* argv[])
         // Points next to pegs and style shot names
         DrawFloatingTexts(renderer, game.floaters);
 
+        if (zoomed)
+        {
+            SDL_SetRenderTarget(renderer, nullptr);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderClear(renderer);
+            const SDL_FRect view = CameraSource(game);
+            SDL_RenderTexture(renderer, worldTex, &view, nullptr);
+        }
+
         // Black borders
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         const SDL_FRect borders[4] = {
@@ -1843,7 +2022,7 @@ int main(int argc, char* argv[])
         DrawTopHud(renderer, currentLevel, game.score);
 
         // Balls left stacked up in the left border with the free ball bars either side
-        DrawBallMeter(renderer, game, game.shotInProgress || popup.timer > 0.0f);
+        DrawBallMeter(renderer, game, game.shotInProgress || popup.timer > 0.0f || game.finale.scoreActive);
 
         // Fever meter, right border. One segment per orange peg hit, filling from the bottom.
         const int   segPitch = METER_SEGMENT_HEIGHT + METER_SEGMENT_GAP;
@@ -1871,6 +2050,12 @@ int main(int argc, char* argv[])
         // Popup with the points for the shot
         if (popup.timer > 0.0f && !popup.lines.empty())
             DrawShotPopup(renderer, popup);
+
+        // Final shot: EXTREME FEVER! when the last orange peg is hit, then FEVER SCORE after the fireworks
+        if (game.feverZoomOut)
+            DrawExtremeFeverText(renderer, game);
+        if (game.finale.scoreActive)
+            DrawFeverScore(renderer, game);
 
         // 50/50 for a shot that hit nothing
         if (game.roulette.active)
@@ -1936,6 +2121,7 @@ int main(int argc, char* argv[])
     }
 
     AudioShutdown();
+    if (worldTex) SDL_DestroyTexture(worldTex);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
