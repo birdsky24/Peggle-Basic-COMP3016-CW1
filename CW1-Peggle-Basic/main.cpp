@@ -439,15 +439,29 @@ static std::vector<Button> GetScreenButtons(Screen screen, int currentLevel, int
     else if (screen == Screen::LevelClear)
     {
         const float x = LAUNCHER_X - 150.0f;
-        float y = 220.0f;
-        buttons.push_back({ { x, y, 300.0f, 40.0f }, scoreSaved ? "SAVED" : "SAVE SCORE", (canSave && !scoreSaved) ? Action::SaveScore : Action::None, 0 }); y += 46.0f;
+        float y = 238.0f; // <--- Shifted down from 220.0f to clear the hint text
+
+        const float btnH = 38.0f;
+        const float btnStep = 44.0f;
+
+        // Save Score button
+        buttons.push_back({ { x, y, 300.0f, btnH }, scoreSaved ? "SAVED" : "SAVE SCORE", (canSave && !scoreSaved) ? Action::SaveScore : Action::None, 0 });
+        y += btnStep;
+
+        // Next Level button (if not the last level)
         if (currentLevel < levelCount)
         {
-            buttons.push_back({ { x, y, 300.0f, 40.0f }, "NEXT LEVEL", Action::NextLevel, 0 }); y += 46.0f;
+            buttons.push_back({ { x, y, 300.0f, btnH }, "NEXT LEVEL", Action::NextLevel, 0 });
+            y += btnStep;
         }
-        buttons.push_back({ { x, y, 300.0f, 40.0f }, "SETTINGS", Action::OpenSettings, 0 }); y += 46.0f;
-        buttons.push_back({ { x, y, 300.0f, 40.0f }, "MAIN MENU", Action::MainMenu, 0 }); y += 46.0f;
-        buttons.push_back({ { x, y, 300.0f, 40.0f }, "LEVEL SELECT", Action::OpenLevelSelect, 0 });
+
+        buttons.push_back({ { x, y, 300.0f, btnH }, "SETTINGS", Action::OpenSettings, 0 });
+        y += btnStep;
+
+        buttons.push_back({ { x, y, 300.0f, btnH }, "MAIN MENU", Action::MainMenu, 0 });
+        y += btnStep;
+
+        buttons.push_back({ { x, y, 300.0f, btnH }, "LEVEL SELECT", Action::OpenLevelSelect, 0 });
     }
     return buttons;
 }
@@ -2110,20 +2124,44 @@ int main(int argc, char* argv[])
             {
                 const std::string title = "LEVEL CLEARED";
                 SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
-                DrawText(renderer, title, LAUNCHER_X - TextWidth(title, 3.0f) / 2.0f, 108.0f, 3.0f);
-                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-                DrawText(renderer, scoreLine, LAUNCHER_X - TextWidth(scoreLine, 2.0f) / 2.0f, 150.0f, 2.0f);
+                DrawText(renderer, title, LAUNCHER_X - TextWidth(title, 3.0f) / 2.0f, 106.0f, 3.0f);
 
+                // Player's finished score
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                DrawText(renderer, scoreLine, LAUNCHER_X - TextWidth(scoreLine, 2.0f) / 2.0f, 142.0f, 2.0f);
+
+                // Check existing high score for this level
+                const std::vector<ScoreEntry> levelScores = ScoresForLevel(scores, currentLevel);
+                const long long prevBest = levelScores.empty() ? 0 : levelScores[0].score;
+                const bool isNewHigh = (game.score > prevBest);
+
+                if (isNewHigh)
+                {
+                    // "NEW HIGHSCORE!" in gold
+                    const std::string highText = "NEW HIGHSCORE!";
+                    SDL_SetRenderDrawColor(renderer, 255, 215, 0, 255);
+                    DrawText(renderer, highText, LAUNCHER_X - TextWidth(highText, 2.0f) / 2.0f, 168.0f, 2.0f);
+                }
+                else
+                {
+                    // Show current record to beat
+                    const std::string bestLine = "BEST: " + FormatNumber(prevBest);
+                    SDL_SetRenderDrawColor(renderer, 170, 180, 200, 255);
+                    DrawText(renderer, bestLine, LAUNCHER_X - TextWidth(bestLine, 2.0f) / 2.0f, 168.0f, 2.0f);
+                }
+
+                // Name entry
                 std::string nameLine;
                 if (scoreSaved) nameLine = "SAVED AS " + nameInput;
                 else nameLine = "NAME " + nameInput + (nameInput.size() < 3 ? "_" : "");
                 SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
-                DrawText(renderer, nameLine, LAUNCHER_X - TextWidth(nameLine, 2.0f) / 2.0f, 180.0f, 2.0f);
+                DrawText(renderer, nameLine, LAUNCHER_X - TextWidth(nameLine, 2.0f) / 2.0f, 194.0f, 2.0f);
+
                 if (!scoreSaved)
                 {
                     const std::string hint = "TYPE 3 LETTERS THEN SAVE";
                     SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
-                    DrawText(renderer, hint, LAUNCHER_X - TextWidth(hint, 1.0f) / 2.0f, 202.0f, 1.0f);
+                    DrawText(renderer, hint, LAUNCHER_X - TextWidth(hint, 1.0f) / 2.0f, 216.0f, 1.0f);
                 }
             }
 
