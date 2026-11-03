@@ -8,3 +8,11 @@ Make it possible to merge leaderboards from different copies.*
 Add a drop animation for when a free ball is added. Ball falls down.*
 Add a medal after ULTRA EXTREME FEVER (when all pegs are hit). Display a small medal next to the score on the leaderboard as well.*
 Pegpop sounds isn't playing.*
+
+*Implemented
+
+Harry Playtest ideas
+Add button mashing/skill check to roulette
+Add popping animation to pegs disappearing
+More volume control, sliders for different volume sources
+List of all the style shots
