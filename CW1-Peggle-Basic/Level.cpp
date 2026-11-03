@@ -428,12 +428,65 @@ static std::vector<Peg> BuildLevel9()
     return pegs;
 }
 
+// Level 10 - Grand Clockwork Wheel with Maximized Spacing (36 + 8 + 24 + 32 = 100 pegs)
+static std::vector<Peg> BuildLevel10()
+{
+    std::vector<Peg> pegs;
+
+    constexpr float wheelX = LAUNCHER_X;
+    constexpr float wheelY = 320.0f;
+
+    // 1. Outer Wheel Rim (Enlarged to R = 215px, 36 pegs -> ~38px spacing)
+    constexpr float rimRadius = 215.0f;
+    AddRing(pegs, wheelX, wheelY, rimRadius, 36);
+
+    // 2. Open Center Hub Ring (Enlarged to R = 60px, 8 pegs -> ~47px spacing)
+    constexpr float hubRadius = 60.0f;
+    AddRing(pegs, wheelX, wheelY, hubRadius, 8);
+
+    // 3. 8 Radial Spokes with wide 40px spacing (3 pegs each = 24 pegs)
+    constexpr int spokeCount = 8;
+    constexpr int pegsPerSpoke = 3;
+    constexpr float spokeStartR = 100.0f;
+    constexpr float spokeEndR = 175.0f;
+    constexpr float spokeStepR = (spokeEndR - spokeStartR) / static_cast<float>(pegsPerSpoke - 1);
+
+    for (int s = 0; s < spokeCount; ++s)
+    {
+        const float angle = static_cast<float>(s) * (2.0f * SDL_PI_F / static_cast<float>(spokeCount));
+        const float cosA = std::cos(angle);
+        const float sinA = std::sin(angle);
+
+        for (int p = 0; p < pegsPerSpoke; ++p)
+        {
+            const float r = spokeStartR + p * spokeStepR;
+            pegs.push_back({ wheelX + r * cosA, wheelY + r * sinA });
+        }
+    }
+
+    // 4. 4 Corner Satellite Rings with wide spacing (8 pegs each = 32 pegs)
+    constexpr float cornerR = 45.0f;
+    const Point corners[4] = {
+        { 115.0f, 150.0f }, // Top-Left
+        { 685.0f, 150.0f }, // Top-Right
+        { 115.0f, 490.0f }, // Bottom-Left
+        { 685.0f, 490.0f }  // Bottom-Right
+    };
+
+    for (const Point& c : corners)
+    {
+        AddRing(pegs, c.x, c.y, cornerR, 8);
+    }
+
+    return pegs;
+}
+
 // ---------------------------------------------------------------------------
 // Public functions
 // ---------------------------------------------------------------------------
 int LevelCount()
 {
-    return 9; // Updated to 9 levels
+    return 10; // Updated to 10 levels
 }
 
 std::vector<Peg> BuildLevel(int levelNumber)
@@ -450,6 +503,7 @@ std::vector<Peg> BuildLevel(int levelNumber)
     case 7: pegs = BuildLevel7(); break;
     case 8: pegs = BuildLevel8(); break;
     case 9: pegs = BuildLevel9(); break;
+    case 10: pegs = BuildLevel10(); break; // Added Level 10
     default: break;
     }
 
