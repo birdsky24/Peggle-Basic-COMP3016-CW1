@@ -208,7 +208,9 @@ enum class Action
     NextLevel,
     SaveScore,
     OpenSettings,
-    CloseSettings
+    CloseSettings,
+    OpenStyleShots,
+    CloseStyleShots
 };
 
 struct Button
@@ -461,6 +463,78 @@ static void DrawSettings(SDL_Renderer* r, float mouseX, float mouseY)
     DrawButtons(r, GetSettingsButtons(), mouseX, mouseY);
 }
 
+// ---------------------------------------------------------------------------
+// Style Shots Popup
+// ---------------------------------------------------------------------------
+static SDL_FRect StyleShotsPanel()
+{
+    return { LAUNCHER_X - 290.0f, 35.0f, 580.0f, 530.0f };
+}
+
+static std::vector<Button> GetStyleShotsButtons()
+{
+    const SDL_FRect panel = StyleShotsPanel();
+    return {
+        { { LAUNCHER_X - 75.0f, panel.y + panel.h - 46.0f, 150.0f, 34.0f }, "CLOSE", Action::CloseStyleShots, 0 }
+    };
+}
+
+static void DrawStyleShots(SDL_Renderer* r, float mouseX, float mouseY)
+{
+    DrawDim(r, 205);
+    const SDL_FRect panel = StyleShotsPanel();
+    DrawPanel(r, panel);
+
+    // Title
+    const std::string title = "STYLE SHOTS";
+    SDL_SetRenderDrawColor(r, 255, 220, 80, 255);
+    DrawText(r, title, LAUNCHER_X - TextWidth(title, 3.0f) / 2.0f, panel.y + 16.0f, 3.0f);
+
+    struct StyleInfo {
+        std::string name;
+        std::string pts;
+        std::string desc;
+    };
+
+    static const StyleInfo list[] = {
+        { "LONG SHOT",         "+5,000",   "Hit a non-blue peg from 1/3 screen distance away." },
+        { "SUPER LONG SHOT",   "+25,000",  "Hit a non-blue peg from 2/3 screen distance away." },
+        { "DOUBLE LONG SHOT",  "+25,000",  "Make two long shots in a row in a single turn." },
+        { "OFF THE WALL",      "+25,000",  "Bounce off a wall and travel 1/5 screen height into a peg." },
+        { "FREE BALL SKILLS",  "+5,000",   "Catch the ball in the bucket after hitting only 1 peg." },
+        { "LUCKY BOUNCE",      "+25,000",  "Bounce off bucket rim, hit a peg, then land in bucket." },
+        { "KICK THE BUCKET",   "+25,000",  "Bounce off bucket rim directly into the last orange peg." },
+        { "ORANGE ATTACK!",    "+50,000",  "Fill an entire multiplier stage in a single shot." },
+        { "ORANGE HAT TRICK",  "+100,000", "Hit the final 3 orange pegs all in the same shot." },
+        { "MAD SKILLZ",        "+25,000",  "Catch the ball in the moving bucket 5 shots in a row." },
+        { "CRAZY MAD SKILLZ",  "+100,000", "Catch the ball in the moving bucket 10 shots in a row." }
+    };
+
+    float y = panel.y + 55.0f;
+    for (const auto& item : list)
+    {
+        // Name (Yellow)
+        SDL_SetRenderDrawColor(r, 255, 220, 80, 255);
+        DrawText(r, item.name, panel.x + 20.0f, y, 1.0f);
+
+        // Points (Green)
+        SDL_SetRenderDrawColor(r, 90, 240, 90, 255);
+        DrawText(r, item.pts, panel.x + panel.w - 20.0f - TextWidth(item.pts, 1.0f), y, 1.0f);
+
+        // Description (Light Grey)
+        SDL_SetRenderDrawColor(r, 210, 215, 225, 255);
+        DrawText(r, item.desc, panel.x + 20.0f, y + 12.0f, 1.0f);
+
+        // Divider line
+        SDL_SetRenderDrawColor(r, 50, 55, 75, 255);
+        SDL_RenderLine(r, panel.x + 20.0f, y + 27.0f, panel.x + panel.w - 20.0f, y + 27.0f);
+
+        y += 35.0f;
+    }
+
+    DrawButtons(r, GetStyleShotsButtons(), mouseX, mouseY);
+}
+
 // The buttons for each screen, used both to draw them and to click them
 static std::vector<Button> GetScreenButtons(Screen screen, int currentLevel, int levelCount, bool canSave, bool scoreSaved)
 {
@@ -468,20 +542,24 @@ static std::vector<Button> GetScreenButtons(Screen screen, int currentLevel, int
 
     if (screen == Screen::MainMenu)
     {
-        buttons.push_back({ { 60.0f, 160.0f, 240.0f, 44.0f }, "PLAY", Action::Play, 0 });
-        buttons.push_back({ { 60.0f, 214.0f, 240.0f, 44.0f }, "LEVEL SELECT", Action::OpenLevelSelect, 0 });
-        buttons.push_back({ { 60.0f, 268.0f, 240.0f, 44.0f }, "SETTINGS", Action::OpenSettings, 0 });
+        buttons.push_back({ { 60.0f, 106.0f, 240.0f, 44.0f }, "PLAY", Action::Play, 0 });
+        buttons.push_back({ { 60.0f, 160.0f, 240.0f, 44.0f }, "LEVEL SELECT", Action::OpenLevelSelect, 0 });
+        buttons.push_back({ { 60.0f, 214.0f, 240.0f, 44.0f }, "SETTINGS", Action::OpenSettings, 0 });
+        buttons.push_back({ { 60.0f, 268.0f, 240.0f, 44.0f }, "STYLE SHOTS", Action::OpenStyleShots, 0 });
         buttons.push_back({ { 60.0f, 322.0f, 240.0f, 44.0f }, "QUIT", Action::Quit, 0 });
     }
     else if (screen == Screen::Paused)
     {
         const float x = LAUNCHER_X - 150.0f;
-        float y = 220.0f;
-        buttons.push_back({ { x, y, 300.0f, 40.0f }, "RESUME", Action::Resume, 0 }); y += 48.0f;
-        buttons.push_back({ { x, y, 300.0f, 40.0f }, "RESTART", Action::Restart, 0 }); y += 48.0f;
-        buttons.push_back({ { x, y, 300.0f, 40.0f }, "SETTINGS", Action::OpenSettings, 0 }); y += 48.0f;
-        buttons.push_back({ { x, y, 300.0f, 40.0f }, "MAIN MENU", Action::MainMenu, 0 }); y += 48.0f;
-        buttons.push_back({ { x, y, 300.0f, 40.0f }, "LEVEL SELECT", Action::OpenLevelSelect, 0 });
+        float y = 206.0f;
+        const float btnH = 36.0f;
+        const float btnStep = 44.0f;
+        buttons.push_back({ { x, y, 300.0f, btnH }, "RESUME", Action::Resume, 0 }); y += btnStep;
+        buttons.push_back({ { x, y, 300.0f, btnH }, "RESTART", Action::Restart, 0 }); y += btnStep;
+        buttons.push_back({ { x, y, 300.0f, btnH }, "STYLE SHOTS", Action::OpenStyleShots, 0 }); y += btnStep;
+        buttons.push_back({ { x, y, 300.0f, btnH }, "SETTINGS", Action::OpenSettings, 0 }); y += btnStep;
+        buttons.push_back({ { x, y, 300.0f, btnH }, "MAIN MENU", Action::MainMenu, 0 }); y += btnStep;
+        buttons.push_back({ { x, y, 300.0f, btnH }, "LEVEL SELECT", Action::OpenLevelSelect, 0 });
     }
     else if (screen == Screen::Fail)
     {
@@ -1740,6 +1818,7 @@ int main(int argc, char* argv[])
     int  currentLevel = 1;
     bool levelSelectOpen = false;
     bool settingsOpen = false;
+    bool styleShotsOpen = false;
     bool draggingSlider = false;
     std::string nameInput;
     bool scoreSaved = false;
@@ -1762,6 +1841,7 @@ int main(int argc, char* argv[])
             scoreSaved = false;
             levelSelectOpen = false;
             settingsOpen = false;
+            styleShotsOpen = false;
             draggingSlider = false;
             screen = Screen::Playing;
         };
@@ -1771,6 +1851,7 @@ int main(int argc, char* argv[])
             screen = Screen::MainMenu;
             levelSelectOpen = false;
             settingsOpen = false;
+            styleShotsOpen = false;
             draggingSlider = false;
             scores = LoadScores();
         };
@@ -1798,6 +1879,8 @@ int main(int argc, char* argv[])
             case Action::CloseLevelSelect: levelSelectOpen = false; break;
             case Action::OpenSettings: settingsOpen = true; break;
             case Action::CloseSettings: settingsOpen = false; break;
+            case Action::OpenStyleShots: styleShotsOpen = true; break;   // <--- ADD THIS
+            case Action::CloseStyleShots: styleShotsOpen = false; break;
             case Action::GoToLevel: startLevel(b.level); break;
             case Action::Restart: startLevel(currentLevel); break;
             case Action::MainMenu: goToMenu(); break;
@@ -1827,7 +1910,8 @@ int main(int argc, char* argv[])
             case SDL_EVENT_KEY_DOWN:
                 if (e.key.key == SDLK_ESCAPE)
                 {
-                    if (settingsOpen) settingsOpen = false;
+                    if (styleShotsOpen) styleShotsOpen = false; // <--- ADD THIS
+                    else if (settingsOpen) settingsOpen = false;
                     else if (levelSelectOpen) levelSelectOpen = false;
                     else if (screen == Screen::Playing) screen = Screen::Paused;
                     else if (screen == Screen::Paused) screen = Screen::Playing;
@@ -1898,6 +1982,19 @@ int main(int argc, char* argv[])
                                 doAction(b);
                                 break;
                             }
+                        }
+                    }
+                    break;
+                }
+
+                if (styleShotsOpen)
+                {
+                    for (const Button& b : GetStyleShotsButtons())
+                    {
+                        if (PointInRect(mouseX, mouseY, b.rect))
+                        {
+                            doAction(b);
+                            break;
                         }
                     }
                     break;
@@ -1981,8 +2078,8 @@ int main(int argc, char* argv[])
             SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
             DrawText(renderer, title, LAUNCHER_X - TextWidth(title, 4.0f) / 2.0f, 40.0f, 4.0f);
 
-            const float hoverX = (levelSelectOpen || settingsOpen) ? -1.0f : mouseX;
-            const float hoverY = (levelSelectOpen || settingsOpen) ? -1.0f : mouseY;
+            const float hoverX = (levelSelectOpen || settingsOpen || styleShotsOpen) ? -1.0f : mouseX;
+            const float hoverY = (levelSelectOpen || settingsOpen || styleShotsOpen) ? -1.0f : mouseY;
             DrawButtons(renderer, GetScreenButtons(screen, currentLevel, LevelCount(), false, false), hoverX, hoverY);
 
             // Helper text below the main menu buttons (white, bold, matching button scale 2.0f)
@@ -2094,6 +2191,8 @@ int main(int argc, char* argv[])
                 DrawLevelSelect(renderer, LevelCount(), mouseX, mouseY);
             else if (settingsOpen)
                 DrawSettings(renderer, mouseX, mouseY);
+            else if (styleShotsOpen)                             // <--- ADD THIS
+                DrawStyleShots(renderer, mouseX, mouseY);
 
             SDL_RenderPresent(renderer);
             continue;
@@ -2498,7 +2597,7 @@ int main(int argc, char* argv[])
         // Overlays (Paused, Fail, LevelClear)
         if (screen == Screen::Paused || screen == Screen::Fail || screen == Screen::LevelClear)
         {
-            const bool hoverOn = !levelSelectOpen && !settingsOpen;
+            const bool hoverOn = !levelSelectOpen && !settingsOpen && !styleShotsOpen;
             DrawDim(renderer, 170);
             DrawPanel(renderer, { LAUNCHER_X - 210.0f, 80.0f, 420.0f, 435.0f });
 
@@ -2574,6 +2673,8 @@ int main(int argc, char* argv[])
                 DrawLevelSelect(renderer, LevelCount(), mouseX, mouseY);
             else if (settingsOpen)
                 DrawSettings(renderer, mouseX, mouseY);
+            else if (styleShotsOpen)                             // <--- ADD THIS
+                DrawStyleShots(renderer, mouseX, mouseY);       // <--- ADD THIS
         }
 
         SDL_RenderPresent(renderer);
