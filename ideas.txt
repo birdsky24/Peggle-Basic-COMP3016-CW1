@@ -15,9 +15,9 @@ Harry Playtest ideas
 Add button mashing/skill check to roulette
 Add popping animation to pegs disappearing*
 More volume control, sliders for different volume sources
-List of all the style shot
+List of all the style shot*
 
 Mervin Ideas:
 Add a challenge mode where shots are the same over the 10 levels.
 
-Make a leaderboard that has a total score for beating 10 levels in a row, separate this into no retrys and retrys used.
+Make a leaderboard that has a total score for beating 10 levels in a row, separate this into no retrys and retrys used.*

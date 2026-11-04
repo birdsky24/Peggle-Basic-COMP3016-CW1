@@ -118,6 +118,12 @@ constexpr float BALL_BONUS_POPUP_TIME = 1.0f; // seconds each +10,000 stays on s
 constexpr float ROULETTE_TIME = 2.0f; // seconds the whole pop-up is on screen
 constexpr float ROULETTE_SPIN_TIME = 1.5f; // seconds the numbers swing before the result is shown
 
+// Challenge Leaderboard Level IDs
+constexpr int CHALLENGE_10_NO_FAIL = 101;
+constexpr int CHALLENGE_10_REGULAR = 102;
+constexpr int CHALLENGE_3 = 103; // Placeholder
+constexpr const char* RUN_SAVE_FILE = "run.dat";
+
 // Small pop-ups that appear next to a peg in the play area
 constexpr float PEG_POPUP_TIME = 0.1f; // seconds the points for a peg stay on screen
 constexpr float PEG_POPUP_SCALE = 2.0f;

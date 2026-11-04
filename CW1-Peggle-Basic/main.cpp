@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <random>
 #include <string>
 #include <vector>
@@ -117,6 +118,51 @@ struct DroppingBall
     bool settled = false;
 };
 
+// ---------------------------------------------------------------------------
+// Run State (10-Level Challenge Run)
+// ---------------------------------------------------------------------------
+struct RunState
+{
+    bool active = false;
+    int currentLevel = 1;
+    bool noFail = true;
+    int completedCount = 0; // Number of levels cleared and moved past with NEXT LEVEL
+    long long levelScores[10] = { 0 };
+
+    long long CompletedTotal() const
+    {
+        long long sum = 0;
+        for (int i = 0; i < completedCount && i < 10; ++i)
+            sum += levelScores[i];
+        return sum;
+    }
+};
+
+static void SaveRunToFile(const RunState& run)
+{
+    if (!run.active)
+    {
+        std::remove(RUN_SAVE_FILE);
+        return;
+    }
+    std::ofstream f(RUN_SAVE_FILE, std::ios::binary | std::ios::trunc);
+    if (f)
+    {
+        f.write(reinterpret_cast<const char*>(&run), sizeof(RunState));
+    }
+}
+
+static RunState LoadRunFromFile()
+{
+    RunState run;
+    std::ifstream f(RUN_SAVE_FILE, std::ios::binary);
+    if (f)
+    {
+        f.read(reinterpret_cast<char*>(&run), sizeof(RunState));
+    }
+    return run;
+}
+
 struct GameState
 {
     long long score = 0;
@@ -157,7 +203,6 @@ struct GameState
     bool ribbonActive = false;
     float ribbonTimer = 0.0f;
     bool ribbonDone = false;
-
 
     // Final shot
     Finale finale;
@@ -207,10 +252,14 @@ enum class Action
     MainMenu,
     NextLevel,
     SaveScore,
+    SaveChallengeScore,
     OpenSettings,
     CloseSettings,
     OpenStyleShots,
-    CloseStyleShots
+    CloseStyleShots,
+    ContinueRun,
+    NewRun,
+    CancelRunPopup
 };
 
 struct Button
@@ -535,6 +584,43 @@ static void DrawStyleShots(SDL_Renderer* r, float mouseX, float mouseY)
     DrawButtons(r, GetStyleShotsButtons(), mouseX, mouseY);
 }
 
+// ---------------------------------------------------------------------------
+// Run Prompt Popup (Continue / New Run)
+// ---------------------------------------------------------------------------
+static SDL_FRect RunPromptPanel()
+{
+    return { LAUNCHER_X - 170.0f, 180.0f, 340.0f, 240.0f };
+}
+
+static std::vector<Button> GetRunPromptButtons()
+{
+    const SDL_FRect p = RunPromptPanel();
+    const float bx = LAUNCHER_X - 120.0f;
+    return {
+        { { bx, p.y + 75.0f,  240.0f, 38.0f }, "CONTINUE RUN", Action::ContinueRun, 0 },
+        { { bx, p.y + 122.0f, 240.0f, 38.0f }, "NEW 10-RUN",    Action::NewRun,      0 },
+        { { bx, p.y + 169.0f, 240.0f, 38.0f }, "CANCEL",       Action::CancelRunPopup, 0 }
+    };
+}
+
+static void DrawRunPrompt(SDL_Renderer* r, const RunState& run, float mouseX, float mouseY)
+{
+    DrawDim(r, 200);
+    const SDL_FRect p = RunPromptPanel();
+    DrawPanel(r, p);
+
+    const std::string title = "ACTIVE 10-RUN";
+    SDL_SetRenderDrawColor(r, 255, 220, 80, 255);
+    DrawText(r, title, LAUNCHER_X - TextWidth(title, 2.5f) / 2.0f, p.y + 16.0f, 2.5f);
+
+    const std::string info = "Level " + std::to_string(run.currentLevel) + " | " +
+        (run.noFail ? "NO FAIL" : "RETRY USED") + " | " + FormatNumber(run.CompletedTotal()) + " pts";
+    SDL_SetRenderDrawColor(r, 200, 210, 225, 255);
+    DrawText(r, info, LAUNCHER_X - TextWidth(info, 1.0f) / 2.0f, p.y + 48.0f, 1.0f);
+
+    DrawButtons(r, GetRunPromptButtons(), mouseX, mouseY);
+}
+
 // The buttons for each screen, used both to draw them and to click them
 static std::vector<Button> GetScreenButtons(Screen screen, int currentLevel, int levelCount, bool canSave, bool scoreSaved)
 {
@@ -573,16 +659,23 @@ static std::vector<Button> GetScreenButtons(Screen screen, int currentLevel, int
     else if (screen == Screen::LevelClear)
     {
         const float x = LAUNCHER_X - 150.0f;
-        float y = 238.0f; // <--- Shifted down from 220.0f to clear the hint text
+        const bool isLevel10 = (currentLevel == levelCount);
 
-        const float btnH = 38.0f;
-        const float btnStep = 44.0f;
+        float y = isLevel10 ? 245.0f : 238.0f;
+        const float btnH = isLevel10 ? 34.0f : 38.0f;
+        const float btnStep = isLevel10 ? 39.0f : 44.0f;
 
-        // Save Score button
-        buttons.push_back({ { x, y, 300.0f, btnH }, scoreSaved ? "SAVED" : "SAVE SCORE", (canSave && !scoreSaved) ? Action::SaveScore : Action::None, 0 });
+        // Button 1: Level 10 score
+        buttons.push_back({ { x, y, 300.0f, btnH }, scoreSaved ? "LVL 10 SAVED" : "SAVE LEVEL SCORE", (canSave && !scoreSaved) ? Action::SaveScore : Action::None, 0 });
         y += btnStep;
 
-        // Next Level button (if not the last level)
+        // Button 2: If on Level 10, separate button for the 10-Run challenge score
+        if (isLevel10)
+        {
+            buttons.push_back({ { x, y, 300.0f, btnH }, "SAVE 10-RUN SCORE", Action::SaveChallengeScore, 0 });
+            y += btnStep;
+        }
+
         if (currentLevel < levelCount)
         {
             buttons.push_back({ { x, y, 300.0f, btnH }, "NEXT LEVEL", Action::NextLevel, 0 });
@@ -596,9 +689,8 @@ static std::vector<Button> GetScreenButtons(Screen screen, int currentLevel, int
         y += btnStep;
 
         buttons.push_back({ { x, y, 300.0f, btnH }, "LEVEL SELECT", Action::OpenLevelSelect, 0 });
-        y += btnStep; // <--- Add this
+        y += btnStep;
 
-        // Retry button added to the end
         buttons.push_back({ { x, y, 300.0f, btnH }, "RETRY", Action::Restart, 0 });
     }
     return buttons;
@@ -984,7 +1076,11 @@ static bool BounceOffTriangle(Ball& ball, const Triangle& tri)
     return ny < -0.3f;
 }
 
-static std::mt19937& GameRng();
+static std::mt19937& GameRng()
+{
+    static std::mt19937 rng{ std::random_device{}() };
+    return rng;
+}
 
 static void SpawnPegPop(GameState& game, const Peg& peg)
 {
@@ -1400,12 +1496,6 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
     }
 }
 
-static std::mt19937& GameRng()
-{
-    static std::mt19937 rng{ std::random_device{}() };
-    return rng;
-}
-
 static void FinishShot(GameState& game, std::vector<Peg>& pegs, Popup& popup)
 {
     const ShotStats& shot = game.shot;
@@ -1753,7 +1843,18 @@ static void DrawHudBox(SDL_Renderer* r, const SDL_FRect& box, const std::string&
     DrawText(r, text, box.x + (box.w - TextWidth(text, 2.0f)) / 2.0f, box.y + (box.h - 16.0f) / 2.0f, 2.0f);
 }
 
-static void DrawTopHud(SDL_Renderer* r, int level, long long score)
+static void DrawHudBoxScaled(SDL_Renderer* r, const SDL_FRect& box, const std::string& text, float scale)
+{
+    SDL_SetRenderDrawColor(r, 45, 60, 100, 255);
+    SDL_RenderFillRect(r, &box);
+    SDL_SetRenderDrawColor(r, 200, 200, 210, 255);
+    SDL_RenderRect(r, &box);
+
+    SDL_SetRenderDrawColor(r, 255, 255, 255, 255);
+    DrawText(r, text, box.x + (box.w - TextWidth(text, scale)) / 2.0f, box.y + (box.h - 8.0f * scale) / 2.0f, scale);
+}
+
+static void DrawTopHud(SDL_Renderer* r, int level, long long currentScore, const RunState& run)
 {
     const float margin = 8.0f;
     const float boxY = 8.0f;
@@ -1761,13 +1862,27 @@ static void DrawTopHud(SDL_Renderer* r, int level, long long score)
     const float padding = 12.0f;
 
     const std::string levelText = "LEVEL " + std::to_string(level);
-    const std::string scoreText = "SCORE " + FormatNumber(score);
+    const std::string scoreText = "SCORE " + FormatNumber(currentScore);
 
     const float levelW = std::max(TextWidth("LEVEL 99", 2.0f), TextWidth(levelText, 2.0f)) + 2.0f * padding;
     const float scoreW = std::max(TextWidth("SCORE 0,000,000", 2.0f), TextWidth(scoreText, 2.0f)) + 2.0f * padding;
 
     DrawHudBox(r, { margin, boxY, levelW, boxH }, levelText);
     DrawHudBox(r, { WINDOW_W - margin - scoreW, boxY, scoreW, boxH }, scoreText);
+
+    // Centered in the open gap between LEVEL and SCORE using scale 1.5 so it never overlaps
+    if (run.active && run.completedCount > 0)
+    {
+        const long long total = run.CompletedTotal() + currentScore;
+        const std::string totalText = "TOTAL SCORE " + FormatNumber(total);
+        const float totalW = TextWidth(totalText, 1.5f) + 20.0f;
+
+        const float gapLeft = margin + levelW + 8.0f;
+        const float gapRight = WINDOW_W - margin - scoreW - 8.0f;
+        const float totalX = gapLeft + ((gapRight - gapLeft) - totalW) / 2.0f;
+
+        DrawHudBoxScaled(r, { totalX, boxY, totalW, boxH }, totalText, 1.5f);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1819,9 +1934,14 @@ int main(int argc, char* argv[])
     bool levelSelectOpen = false;
     bool settingsOpen = false;
     bool styleShotsOpen = false;
+    RunState activeRun = LoadRunFromFile();
+    bool runPromptOpen = false;
     bool draggingSlider = false;
     std::string nameInput;
     bool scoreSaved = false;
+    std::string chalNameInput;
+    bool chalScoreSaved = false;
+    int activeNameTarget = 0; // 0 = Level Name, 1 = Run Name
     std::vector<ScoreEntry> scores = LoadScores();
 
     auto startLevel = [&](int level)
@@ -1839,9 +1959,13 @@ int main(int argc, char* argv[])
             removeCount = 0;
             nameInput.clear();
             scoreSaved = false;
+            chalNameInput.clear();      // <--- ADD THIS
+            chalScoreSaved = false;     // <--- ADD THIS
+            activeNameTarget = 0;
             levelSelectOpen = false;
             settingsOpen = false;
             styleShotsOpen = false;
+            runPromptOpen = false;
             draggingSlider = false;
             screen = Screen::Playing;
         };
@@ -1852,6 +1976,7 @@ int main(int argc, char* argv[])
             levelSelectOpen = false;
             settingsOpen = false;
             styleShotsOpen = false;
+            runPromptOpen = false;
             draggingSlider = false;
             scores = LoadScores();
         };
@@ -1864,7 +1989,32 @@ int main(int argc, char* argv[])
             entry.name = nameInput;
             entry.score = game.score;
             entry.isUltra = game.ultraFever;
-            if (SaveScore(entry)) scoreSaved = true;
+            if (SaveScore(entry))
+            {
+                scoreSaved = true;
+                scores = LoadScores();
+            }
+        };
+
+    auto saveChallengeScore = [&]()
+        {
+            if (chalNameInput.size() != 3 || chalScoreSaved) return;
+            if (!activeRun.active || currentLevel != LevelCount()) return;
+
+            activeRun.levelScores[currentLevel - 1] = game.score;
+            activeRun.completedCount = LevelCount();
+            const long long runGrandTotal = activeRun.CompletedTotal();
+
+            ScoreEntry chalEntry;
+            chalEntry.level = activeRun.noFail ? CHALLENGE_10_NO_FAIL : CHALLENGE_10_REGULAR;
+            chalEntry.name = chalNameInput;
+            chalEntry.score = runGrandTotal;
+            chalEntry.isUltra = false;
+            if (SaveScore(chalEntry))
+            {
+                chalScoreSaved = true;
+                scores = LoadScores();
+            }
         };
 
     auto doAction = [&](const Button& b)
@@ -1872,23 +2022,110 @@ int main(int argc, char* argv[])
             if (b.action != Action::None) PlaySfx(Sfx::ButtonClick);
             switch (b.action)
             {
-            case Action::Play: startLevel(1); break;
+            case Action::Play:
+                if (activeRun.active && activeRun.currentLevel > 1)
+                {
+                    runPromptOpen = true;
+                }
+                else
+                {
+                    activeRun = RunState();
+                    activeRun.active = true;
+                    activeRun.currentLevel = 1;
+                    activeRun.noFail = true;
+                    activeRun.completedCount = 0;
+                    SaveRunToFile(activeRun);
+                    startLevel(1);
+                }
+                break;
+
+            case Action::ContinueRun:
+                runPromptOpen = false;
+                // Exiting mid-level counts as resetting the level -> lose No Fail
+                activeRun.noFail = false;
+                SaveRunToFile(activeRun);
+                startLevel(activeRun.currentLevel);
+                break;
+
+            case Action::NewRun:
+                runPromptOpen = false;
+                activeRun = RunState();
+                activeRun.active = true;
+                activeRun.currentLevel = 1;
+                activeRun.noFail = true;
+                activeRun.completedCount = 0;
+                SaveRunToFile(activeRun);
+                startLevel(1);
+                break;
+
+            case Action::CancelRunPopup:
+                runPromptOpen = false;
+                break;
+
             case Action::Resume: screen = Screen::Playing; break;
             case Action::Quit: running = false; break;
             case Action::OpenLevelSelect: levelSelectOpen = true; break;
             case Action::CloseLevelSelect: levelSelectOpen = false; break;
             case Action::OpenSettings: settingsOpen = true; break;
             case Action::CloseSettings: settingsOpen = false; break;
-            case Action::OpenStyleShots: styleShotsOpen = true; break;   // <--- ADD THIS
+            case Action::OpenStyleShots: styleShotsOpen = true; break;
             case Action::CloseStyleShots: styleShotsOpen = false; break;
-            case Action::GoToLevel: startLevel(b.level); break;
-            case Action::Restart: startLevel(currentLevel); break;
-            case Action::MainMenu: goToMenu(); break;
-            case Action::NextLevel: startLevel(currentLevel + 1); break;
+
+            case Action::GoToLevel:
+                if (b.level == 1)
+                {
+                    // Selecting Level 1 starts a fresh 10-run
+                    activeRun = RunState();
+                    activeRun.active = true;
+                    activeRun.currentLevel = 1;
+                    activeRun.noFail = true;
+                    activeRun.completedCount = 0;
+                    SaveRunToFile(activeRun);
+                }
+                else
+                {
+                    // Jumping to other levels abandons any active 10-run
+                    activeRun.active = false;
+                    SaveRunToFile(activeRun);
+                }
+                startLevel(b.level);
+                break;
+
+            case Action::Restart:
+                if (activeRun.active)
+                {
+                    activeRun.noFail = false; // Using restart/retry forfeits No Fail
+                    SaveRunToFile(activeRun);
+                }
+                startLevel(currentLevel);
+                break;
+
+            case Action::MainMenu:
+                if (activeRun.active)
+                {
+                    activeRun.noFail = false; // Leaving mid-level forfeits No Fail
+                    SaveRunToFile(activeRun);
+                }
+                goToMenu();
+                break;
+
+            case Action::NextLevel:
+                if (activeRun.active)
+                {
+                    activeRun.levelScores[currentLevel - 1] = game.score;
+                    activeRun.completedCount = std::max(activeRun.completedCount, currentLevel);
+                    activeRun.currentLevel = currentLevel + 1;
+                    SaveRunToFile(activeRun);
+                }
+                startLevel(currentLevel + 1);
+                break;
+
             case Action::SaveScore: saveScore(); break;
+            case Action::SaveChallengeScore: saveChallengeScore(); break;
             default: break;
             }
         };
+
     float mouseX = LAUNCHER_X;
     float mouseY = WINDOW_H;
 
@@ -1910,20 +2147,40 @@ int main(int argc, char* argv[])
             case SDL_EVENT_KEY_DOWN:
                 if (e.key.key == SDLK_ESCAPE)
                 {
-                    if (styleShotsOpen) styleShotsOpen = false; // <--- ADD THIS
+                    if (runPromptOpen) runPromptOpen = false;
+                    else if (styleShotsOpen) styleShotsOpen = false;
                     else if (settingsOpen) settingsOpen = false;
                     else if (levelSelectOpen) levelSelectOpen = false;
                     else if (screen == Screen::Playing) screen = Screen::Paused;
                     else if (screen == Screen::Paused) screen = Screen::Playing;
                 }
-                else if (screen == Screen::LevelClear && !scoreSaved && !levelSelectOpen && !settingsOpen)
+                else if (screen == Screen::LevelClear && !levelSelectOpen && !settingsOpen && !styleShotsOpen)
                 {
-                    if (e.key.key == SDLK_BACKSPACE && !nameInput.empty())
-                        nameInput.pop_back();
-                    else if (e.key.key >= SDLK_A && e.key.key <= SDLK_Z && nameInput.size() < 3 && !e.key.repeat)
-                        nameInput += static_cast<char>('A' + (e.key.key - SDLK_A));
-                    else if (e.key.key == SDLK_RETURN)
-                        saveScore();
+                    const bool isLevel10Run = (activeRun.active && currentLevel == LevelCount());
+
+                    // Tab switches between typing Level name and Run name
+                    if (e.key.key == SDLK_TAB && isLevel10Run)
+                    {
+                        activeNameTarget = (activeNameTarget == 0) ? 1 : 0;
+                    }
+                    else
+                    {
+                        std::string& targetStr = (activeNameTarget == 0 || !isLevel10Run) ? nameInput : chalNameInput;
+                        const bool isSaved = (activeNameTarget == 0 || !isLevel10Run) ? scoreSaved : chalScoreSaved;
+
+                        if (!isSaved)
+                        {
+                            if (e.key.key == SDLK_BACKSPACE && !targetStr.empty())
+                                targetStr.pop_back();
+                            else if (e.key.key >= SDLK_A && e.key.key <= SDLK_Z && targetStr.size() < 3 && !e.key.repeat)
+                                targetStr += static_cast<char>('A' + (e.key.key - SDLK_A));
+                            else if (e.key.key == SDLK_RETURN)
+                            {
+                                if (activeNameTarget == 0 || !isLevel10Run) saveScore();
+                                else saveChallengeScore();
+                            }
+                        }
+                    }
                 }
                 break;
 
@@ -1947,7 +2204,7 @@ int main(int argc, char* argv[])
                     if (draggingSlider)
                     {
                         draggingSlider = false;
-                        SaveAudioSettings(); // <--- Save as soon as you release the slider
+                        SaveAudioSettings();
                     }
                 }
                 break;
@@ -1962,6 +2219,19 @@ int main(int argc, char* argv[])
                 if (e.button.button != SDL_BUTTON_LEFT) break;
                 mouseX = e.button.x;
                 mouseY = e.button.y;
+
+                if (runPromptOpen)
+                {
+                    for (const Button& b : GetRunPromptButtons())
+                    {
+                        if (PointInRect(mouseX, mouseY, b.rect))
+                        {
+                            doAction(b);
+                            break;
+                        }
+                    }
+                    break;
+                }
 
                 if (settingsOpen)
                 {
@@ -2034,6 +2304,13 @@ int main(int argc, char* argv[])
                         game.stuckCheckY = ball.y;
                     }
                 }
+                if (screen == Screen::LevelClear && activeRun.active && currentLevel == LevelCount())
+                {
+                    const SDL_FRect row0 = { LAUNCHER_X - 150.0f, 185.0f, 300.0f, 20.0f };
+                    const SDL_FRect row1 = { LAUNCHER_X - 150.0f, 205.0f, 300.0f, 20.0f };
+                    if (PointInRect(mouseX, mouseY, row0)) activeNameTarget = 0;
+                    if (PointInRect(mouseX, mouseY, row1)) activeNameTarget = 1;
+                }
                 else
                 {
                     const std::vector<Button> buttons = GetScreenButtons(screen, currentLevel, LevelCount(), nameInput.size() == 3, scoreSaved);
@@ -2078,15 +2355,14 @@ int main(int argc, char* argv[])
             SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
             DrawText(renderer, title, LAUNCHER_X - TextWidth(title, 4.0f) / 2.0f, 40.0f, 4.0f);
 
-            const float hoverX = (levelSelectOpen || settingsOpen || styleShotsOpen) ? -1.0f : mouseX;
-            const float hoverY = (levelSelectOpen || settingsOpen || styleShotsOpen) ? -1.0f : mouseY;
+            const float hoverX = (levelSelectOpen || settingsOpen || styleShotsOpen || runPromptOpen) ? -1.0f : mouseX;
+            const float hoverY = (levelSelectOpen || settingsOpen || styleShotsOpen || runPromptOpen) ? -1.0f : mouseY;
             DrawButtons(renderer, GetScreenButtons(screen, currentLevel, LevelCount(), false, false), hoverX, hoverY);
 
-            // Helper text below the main menu buttons (white, bold, matching button scale 2.0f)
+            // Helper text below the main menu buttons
             SDL_SetRenderDrawColor(renderer, COL_WHITE.r, COL_WHITE.g, COL_WHITE.b, 255);
             const float hintScale = 1.8f;
 
-            // Helper lambda to draw bold text by stamping with a slight offset
             auto DrawBoldText = [&](const std::string& text, float x, float y) {
                 DrawText(renderer, text, x, y, hintScale);
                 DrawText(renderer, text, x + 1.0f, y, hintScale);
@@ -2099,99 +2375,119 @@ int main(int argc, char* argv[])
             DrawBoldText("Press ESC", 65.0f, 524.0f);
             DrawBoldText("To Pause", 65.0f, 552.0f);
 
-            // Leaderboard
+            // Leaderboard Header
+            const float lbCenterX = 395.0f + 375.0f / 2.0f;
             SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
-            DrawText(renderer, "LEADERBOARD", 400.0f, 120.0f, 2.0f);
+            DrawText(renderer, "LEADERBOARD", lbCenterX - TextWidth("LEADERBOARD", 2.0f) / 2.0f, 120.0f, 2.0f);
+
+            struct LeaderboardRow {
+                int id;
+                std::string label;
+                bool isChallenge;
+            };
+
+            std::vector<LeaderboardRow> lbRows = {
+                { CHALLENGE_10_NO_FAIL, "10 LVL NO FAIL", true },
+                { CHALLENGE_10_REGULAR, "10 LEVELS",       true },
+                { CHALLENGE_3,          "CHALLENGE 3",     true }
+            };
+            for (int lvl = 1; lvl <= LevelCount(); ++lvl)
+                lbRows.push_back({ lvl, "LEVEL " + std::to_string(lvl), false });
 
             int hoveredLevel = 0;
-            for (int level = 1; level <= LevelCount(); ++level)
-            {
-                const float y = 160.0f + (level - 1) * 26.0f;
-                const SDL_FRect row = { 395.0f, y - 4.0f, 370.0f, 24.0f };
-                const std::vector<ScoreEntry> levelScores = ScoresForLevel(scores, level);
+            std::string hoveredTitle = "";
 
-                if (!levelSelectOpen && !settingsOpen && PointInRect(mouseX, mouseY, row))
+            const float startY = 150.0f; // Shifted down to match the new header position
+            const float rowHeight = 22.0f;
+            const float challengeGap = 10.0f;
+
+            for (size_t i = 0; i < lbRows.size(); ++i)
+            {
+                const auto& item = lbRows[i];
+                float y = startY + i * rowHeight;
+                if (!item.isChallenge)
+                    y += challengeGap; // Gap separating challenges from regular levels
+
+                const SDL_FRect rowRect = { 395.0f, y - 2.0f, 375.0f, 20.0f };
+                const std::vector<ScoreEntry> levelScores = ScoresForLevel(scores, item.id);
+
+                if (!levelSelectOpen && !settingsOpen && !styleShotsOpen && !runPromptOpen && PointInRect(mouseX, mouseY, rowRect))
                 {
-                    hoveredLevel = level;
+                    hoveredLevel = item.id;
+                    hoveredTitle = item.label;
                     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
                     SDL_SetRenderDrawColor(renderer, 80, 110, 170, 120);
-                    SDL_RenderFillRect(renderer, &row);
+                    SDL_RenderFillRect(renderer, &rowRect);
                     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
                 }
 
-                SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
-                DrawText(renderer, "LEVEL " + std::to_string(level), 400.0f, y, 2.0f);
-                if (levelScores.empty())
+                if (item.isChallenge) SDL_SetRenderDrawColor(renderer, 255, 200, 70, 255);
+                else                  SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
+                DrawText(renderer, item.label, 400.0f, y, 1.5f);
+
+                if (item.id == CHALLENGE_3)
                 {
-                    DrawText(renderer, "NO SCORES YET", 760.0f - TextWidth("NO SCORES YET", 2.0f), y, 2.0f);
+                    DrawText(renderer, "LOCKED", 760.0f - TextWidth("LOCKED", 1.5f), y, 1.5f);
+                }
+                else if (levelScores.empty())
+                {
+                    DrawText(renderer, "NO SCORES", 760.0f - TextWidth("NO SCORES", 1.5f), y, 1.5f);
                 }
                 else
                 {
                     const std::string scoreText = FormatNumber(levelScores[0].score);
-                    const float scoreX = 760.0f - TextWidth(scoreText, 2.0f);
+                    const float scoreX = 760.0f - TextWidth(scoreText, 1.5f);
 
-                    // If Ultra Fever, draw the mini rosette icon!
-                    if (levelScores[0].isUltra)
+                    if (levelScores[0].isUltra && ribbonTex)
                     {
-                        if (ribbonTex)
-                        {
-                            const SDL_FRect miniRibbon = { scoreX - 18.0f, y - 2.0f, 14.0f, 22.0f };
-                            SDL_RenderTexture(renderer, ribbonTex, nullptr, &miniRibbon);
-                        }
-                        else
-                        {
-                            SDL_SetRenderDrawColor(renderer, 255, 215, 0, 255);
-                            DrawText(renderer, "*", scoreX - 14.0f, y, 2.0f);
-                        }
+                        const SDL_FRect miniRibbon = { scoreX - 16.0f, y - 1.0f, 12.0f, 18.0f };
+                        SDL_RenderTexture(renderer, ribbonTex, nullptr, &miniRibbon);
                     }
-
                     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-                    DrawText(renderer, levelScores[0].name, 530.0f, y, 2.0f);
-                    DrawText(renderer, scoreText, 760.0f - TextWidth(scoreText, 2.0f), y, 2.0f);
+                    DrawText(renderer, levelScores[0].name, 585.0f, y, 1.5f);
+                    DrawText(renderer, scoreText, scoreX, y, 1.5f);
                 }
             }
 
-            if (hoveredLevel > 0)
+            if (hoveredLevel > 0 && hoveredLevel != CHALLENGE_3)
             {
                 const std::vector<ScoreEntry> levelScores = ScoresForLevel(scores, hoveredLevel);
                 if (!levelScores.empty())
                 {
-                    const float rowY = 160.0f + (hoveredLevel - 1) * 26.0f;
                     const float h = 44.0f + levelScores.size() * 22.0f;
-                    const SDL_FRect panel = { 395.0f, std::min(rowY + 28.0f, WINDOW_H - 10.0f - h), 370.0f, h };
+                    const SDL_FRect panel = { 395.0f, std::max(60.0f, std::min(mouseY - 20.0f, WINDOW_H - 10.0f - h)), 375.0f, h };
                     DrawPanel(renderer, panel);
 
                     SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
-                    DrawText(renderer, "LEVEL " + std::to_string(hoveredLevel) + " BEST SCORES", panel.x + 10.0f, panel.y + 10.0f, 2.0f);
+                    DrawText(renderer, hoveredTitle + " BEST SCORES", panel.x + 10.0f, panel.y + 10.0f, 1.8f);
                     for (size_t i = 0; i < levelScores.size(); ++i)
                     {
-                        const float y = panel.y + 38.0f + i * 22.0f;
+                        const float y = panel.y + 36.0f + i * 22.0f;
                         const std::string scoreText = FormatNumber(levelScores[i].score);
-                        const float scoreX = panel.x + panel.w - 10.0f - TextWidth(scoreText, 2.0f);
+                        const float scoreX = panel.x + panel.w - 10.0f - TextWidth(scoreText, 1.5f);
 
-                        if (levelScores[i].isUltra)
+                        if (levelScores[i].isUltra && ribbonTex)
                         {
-                            if (ribbonTex)
-                            {
-                                const SDL_FRect miniRibbon = { scoreX - 18.0f, y - 2.0f, 14.0f, 22.0f };
-                                SDL_RenderTexture(renderer, ribbonTex, nullptr, &miniRibbon);
-                            }
+                            const SDL_FRect miniRibbon = { scoreX - 16.0f, y - 1.0f, 12.0f, 18.0f };
+                            SDL_RenderTexture(renderer, ribbonTex, nullptr, &miniRibbon);
                         }
 
                         SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
-                        DrawText(renderer, std::to_string(i + 1) + ".", panel.x + 10.0f, y, 2.0f);
+                        DrawText(renderer, std::to_string(i + 1) + ".", panel.x + 10.0f, y, 1.5f);
                         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-                        DrawText(renderer, levelScores[i].name, panel.x + 70.0f, y, 2.0f);
-                        DrawText(renderer, scoreText, panel.x + panel.w - 10.0f - TextWidth(scoreText, 2.0f), y, 2.0f);
+                        DrawText(renderer, levelScores[i].name, panel.x + 60.0f, y, 1.5f);
+                        DrawText(renderer, scoreText, scoreX, y, 1.5f);
                     }
                 }
             }
 
-            if (levelSelectOpen)
+            if (runPromptOpen)
+                DrawRunPrompt(renderer, activeRun, mouseX, mouseY);
+            else if (levelSelectOpen)
                 DrawLevelSelect(renderer, LevelCount(), mouseX, mouseY);
             else if (settingsOpen)
                 DrawSettings(renderer, mouseX, mouseY);
-            else if (styleShotsOpen)                             // <--- ADD THIS
+            else if (styleShotsOpen)
                 DrawStyleShots(renderer, mouseX, mouseY);
 
             SDL_RenderPresent(renderer);
@@ -2221,7 +2517,7 @@ int main(int argc, char* argv[])
             {
                 p.x += p.vx * frameDt;
                 p.y += p.vy * frameDt;
-                p.vy += 300.0f * frameDt; // slight gravity pull on sparks
+                p.vy += 300.0f * frameDt;
             }
         }
         game.pegPops.erase(std::remove_if(game.pegPops.begin(), game.pegPops.end(),
@@ -2232,7 +2528,7 @@ int main(int argc, char* argv[])
         for (auto& drop : game.droppingBalls)
         {
             const float targetY = GetStackBallY(drop.targetIndex, game.ballsLeft);
-            drop.vy += 2400.0f * frameDt; // Gravity pulling it down
+            drop.vy += 2400.0f * frameDt;
             drop.y += drop.vy * frameDt;
 
             if (drop.y >= targetY)
@@ -2240,7 +2536,7 @@ int main(int argc, char* argv[])
                 drop.y = targetY;
                 if (drop.bouncesLeft > 0)
                 {
-                    drop.vy = -drop.vy * 0.25f; // Small settling bounce
+                    drop.vy = -drop.vy * 0.25f;
                     drop.bouncesLeft--;
                 }
                 else
@@ -2429,7 +2725,7 @@ int main(int argc, char* argv[])
             {
                 game.ribbonActive = false;
                 game.ribbonDone = true;
-                screen = Screen::LevelClear; // Win screen pops up now!
+                screen = Screen::LevelClear;
             }
         }
 
@@ -2537,7 +2833,6 @@ int main(int argc, char* argv[])
             }
             else
             {
-                // Fallback text if ribbon.bmp isn't found
                 const std::string badge = "[ 100% ALL PEGS CLEARED! ]";
                 SDL_SetRenderDrawColor(renderer, 255, 215, 0, 255);
                 DrawText(renderer, badge, LAUNCHER_X - TextWidth(badge, 2.5f) / 2.0f, ribbonRect.y + 120.0f, 2.5f);
@@ -2558,7 +2853,7 @@ int main(int argc, char* argv[])
         };
         SDL_RenderFillRects(renderer, borders, 4);
 
-        DrawTopHud(renderer, currentLevel, game.score);
+        DrawTopHud(renderer, currentLevel, game.score, activeRun);
         DrawBallMeter(renderer, game, game.shotInProgress || popup.timer > 0.0f || game.finale.scoreActive);
 
         // Fever meter
@@ -2597,7 +2892,7 @@ int main(int argc, char* argv[])
         // Overlays (Paused, Fail, LevelClear)
         if (screen == Screen::Paused || screen == Screen::Fail || screen == Screen::LevelClear)
         {
-            const bool hoverOn = !levelSelectOpen && !settingsOpen && !styleShotsOpen;
+            const bool hoverOn = !levelSelectOpen && !settingsOpen && !styleShotsOpen && !runPromptOpen;
             DrawDim(renderer, 170);
             DrawPanel(renderer, { LAUNCHER_X - 210.0f, 80.0f, 420.0f, 435.0f });
 
@@ -2624,44 +2919,66 @@ int main(int argc, char* argv[])
             {
                 const std::string title = "LEVEL CLEARED";
                 SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
-                DrawText(renderer, title, LAUNCHER_X - TextWidth(title, 3.0f) / 2.0f, 106.0f, 3.0f);
+                DrawText(renderer, title, LAUNCHER_X - TextWidth(title, 3.0f) / 2.0f, 96.0f, 3.0f);
 
-                // Player's finished score
+                // Level score
                 SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-                DrawText(renderer, scoreLine, LAUNCHER_X - TextWidth(scoreLine, 2.0f) / 2.0f, 142.0f, 2.0f);
+                DrawText(renderer, scoreLine, LAUNCHER_X - TextWidth(scoreLine, 2.0f) / 2.0f, 130.0f, 2.0f);
 
-                // Check existing high score for this level
                 const std::vector<ScoreEntry> levelScores = ScoresForLevel(scores, currentLevel);
                 const long long prevBest = levelScores.empty() ? 0 : levelScores[0].score;
                 const bool isNewHigh = (game.score > prevBest);
 
                 if (isNewHigh)
                 {
-                    // "NEW HIGHSCORE!" in gold
                     const std::string highText = "NEW HIGHSCORE!";
                     SDL_SetRenderDrawColor(renderer, 255, 215, 0, 255);
-                    DrawText(renderer, highText, LAUNCHER_X - TextWidth(highText, 2.0f) / 2.0f, 168.0f, 2.0f);
+                    DrawText(renderer, highText, LAUNCHER_X - TextWidth(highText, 2.0f) / 2.0f, 154.0f, 2.0f);
                 }
                 else
                 {
-                    // Show current record to beat
                     const std::string bestLine = "BEST: " + FormatNumber(prevBest);
                     SDL_SetRenderDrawColor(renderer, 170, 180, 200, 255);
-                    DrawText(renderer, bestLine, LAUNCHER_X - TextWidth(bestLine, 2.0f) / 2.0f, 168.0f, 2.0f);
+                    DrawText(renderer, bestLine, LAUNCHER_X - TextWidth(bestLine, 2.0f) / 2.0f, 154.0f, 2.0f);
                 }
 
-                // Name entry
-                std::string nameLine;
-                if (scoreSaved) nameLine = "SAVED AS " + nameInput;
-                else nameLine = "NAME " + nameInput + (nameInput.size() < 3 ? "_" : "");
-                SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
-                DrawText(renderer, nameLine, LAUNCHER_X - TextWidth(nameLine, 2.0f) / 2.0f, 194.0f, 2.0f);
+                const bool isLevel10Run = (activeRun.active && currentLevel == LevelCount());
 
-                if (!scoreSaved)
+                if (isLevel10Run)
                 {
-                    const std::string hint = "TYPE 3 LETTERS THEN SAVE";
-                    SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
-                    DrawText(renderer, hint, LAUNCHER_X - TextWidth(hint, 1.0f) / 2.0f, 216.0f, 1.0f);
+                    const long long runGrandTotal = activeRun.CompletedTotal() + game.score;
+                    const std::string totalLine = "10-RUN TOTAL: " + FormatNumber(runGrandTotal);
+                    SDL_SetRenderDrawColor(renderer, 255, 200, 70, 255);
+                    DrawText(renderer, totalLine, LAUNCHER_X - TextWidth(totalLine, 1.8f) / 2.0f, 174.0f, 1.8f);
+
+                    // Name line for Level 10
+                    std::string line0 = scoreSaved ? ("LVL NAME: " + nameInput + " (SAVED)") :
+                        ("LVL NAME: " + nameInput + (nameInput.size() < 3 && activeNameTarget == 0 ? "_" : ""));
+                    SDL_SetRenderDrawColor(renderer, activeNameTarget == 0 ? 255 : 180, activeNameTarget == 0 ? 220 : 180, activeNameTarget == 0 ? 80 : 190, 255);
+                    DrawText(renderer, line0, LAUNCHER_X - TextWidth(line0, 1.5f) / 2.0f, 196.0f, 1.5f);
+
+                    // Name line for 10-Run
+                    std::string line1 = chalScoreSaved ? ("RUN NAME: " + chalNameInput + " (SAVED)") :
+                        ("RUN NAME: " + chalNameInput + (chalNameInput.size() < 3 && activeNameTarget == 1 ? "_" : ""));
+                    SDL_SetRenderDrawColor(renderer, activeNameTarget == 1 ? 255 : 180, activeNameTarget == 1 ? 220 : 180, activeNameTarget == 1 ? 80 : 190, 255);
+                    DrawText(renderer, line1, LAUNCHER_X - TextWidth(line1, 1.5f) / 2.0f, 214.0f, 1.5f);
+
+                    const std::string hint = "CLICK NAME OR PRESS TAB TO SWITCH";
+                    SDL_SetRenderDrawColor(renderer, 150, 150, 160, 255);
+                    DrawText(renderer, hint, LAUNCHER_X - TextWidth(hint, 1.0f) / 2.0f, 232.0f, 1.0f);
+                }
+                else
+                {
+                    std::string nameLine = scoreSaved ? ("SAVED AS " + nameInput) : ("NAME " + nameInput + (nameInput.size() < 3 ? "_" : ""));
+                    SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
+                    DrawText(renderer, nameLine, LAUNCHER_X - TextWidth(nameLine, 2.0f) / 2.0f, 185.0f, 2.0f);
+
+                    if (!scoreSaved)
+                    {
+                        const std::string hint = "TYPE 3 LETTERS THEN SAVE";
+                        SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
+                        DrawText(renderer, hint, LAUNCHER_X - TextWidth(hint, 1.0f) / 2.0f, 210.0f, 1.0f);
+                    }
                 }
             }
 
@@ -2673,8 +2990,8 @@ int main(int argc, char* argv[])
                 DrawLevelSelect(renderer, LevelCount(), mouseX, mouseY);
             else if (settingsOpen)
                 DrawSettings(renderer, mouseX, mouseY);
-            else if (styleShotsOpen)                             // <--- ADD THIS
-                DrawStyleShots(renderer, mouseX, mouseY);       // <--- ADD THIS
+            else if (styleShotsOpen)
+                DrawStyleShots(renderer, mouseX, mouseY);
         }
 
         SDL_RenderPresent(renderer);
@@ -2682,7 +2999,7 @@ int main(int argc, char* argv[])
 
     AudioShutdown();
     if (worldTex) SDL_DestroyTexture(worldTex);
-    if(ribbonTex) SDL_DestroyTexture(ribbonTex);
+    if (ribbonTex) SDL_DestroyTexture(ribbonTex);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
