@@ -121,8 +121,9 @@ constexpr float ROULETTE_SPIN_TIME = 1.5f; // seconds the numbers swing before t
 // Challenge Leaderboard Level IDs
 constexpr int CHALLENGE_10_NO_FAIL = 101;
 constexpr int CHALLENGE_10_REGULAR = 102;
-constexpr int CHALLENGE_3 = 103; // Placeholder
+constexpr int CHALLENGE_10_NO_RELOAD = 103;
 constexpr const char* RUN_SAVE_FILE = "run.dat";
+constexpr const char* LEVEL_SAVE_FILE = "level_state.dat";
 
 // Small pop-ups that appear next to a peg in the play area
 constexpr float PEG_POPUP_TIME = 0.1f; // seconds the points for a peg stay on screen
