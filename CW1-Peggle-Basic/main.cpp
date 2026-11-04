@@ -1989,7 +1989,7 @@ static void DrawTopHud(SDL_Renderer* r, int level, long long currentScore, const
 
     if (level == 1 && run.active)
     {
-        const std::string hint = "-> CLICK TO CHANGE CHALLENGE";
+        const std::string hint = "<- CLICK TO CHANGE CHALLENGE";
         SDL_SetRenderDrawColor(r, 120, 230, 235, 255);
         DrawText(r, hint, levelBox.x + levelBox.w + 14.0f, boxY + (boxH - 8.0f) / 2.0f, 1.0f);
     }
