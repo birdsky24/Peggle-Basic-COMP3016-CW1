@@ -40,6 +40,23 @@ struct FloatingText
     int stack = 0; // style shots from the same hit are stacked above each other
 };
 
+// Popping animation particles & shockwave
+struct PegPopParticle
+{
+    float x = 0.0f, y = 0.0f;
+    float vx = 0.0f, vy = 0.0f;
+    float radius = 3.0f;
+};
+
+struct PegPopEffect
+{
+    float x = 0.0f, y = 0.0f;
+    float timer = 0.0f;
+    float duration = 0.35f;
+    SDL_Color colour = { 255, 255, 255, 255 };
+    std::vector<PegPopParticle> particles;
+};
+
 // Everything tracked for the shot that is currently in play
 struct ShotStats
 {
@@ -121,6 +138,7 @@ struct GameState
     float bucketX = LAUNCHER_X; // centre of the bucket
     ShotStats shot;
     std::vector<FloatingText> floaters; // small pop-ups next to pegs
+    std::vector<PegPopEffect> pegPops;
 
     // After the last orange peg's shot, the balls left are cashed in one by one from the top of the stack
     bool ballBonusActive = false;
@@ -219,6 +237,23 @@ static void DrawFilledCircle(SDL_Renderer* r, float cx, float cy, float radius)
     {
         const float h = std::sqrt(std::max(0.0f, radius * radius - static_cast<float>(dy * dy)));
         SDL_RenderLine(r, cx - h, cy + dy, cx + h, cy + dy);
+    }
+}
+
+static void DrawCircleOutline(SDL_Renderer* r, float cx, float cy, float radius, float thickness = 2.0f)
+{
+    constexpr int SEGMENTS = 24;
+    for (int t = 0; t < static_cast<int>(thickness); ++t)
+    {
+        const float rad = radius - static_cast<float>(t);
+        if (rad <= 0.0f) break;
+        for (int i = 0; i < SEGMENTS; ++i)
+        {
+            const float a1 = (static_cast<float>(i) / SEGMENTS) * SDL_PI_F * 2.0f;
+            const float a2 = (static_cast<float>(i + 1) / SEGMENTS) * SDL_PI_F * 2.0f;
+            SDL_RenderLine(r, cx + std::cos(a1) * rad, cy + std::sin(a1) * rad,
+                cx + std::cos(a2) * rad, cy + std::sin(a2) * rad);
+        }
     }
 }
 
@@ -873,6 +908,68 @@ static bool BounceOffTriangle(Ball& ball, const Triangle& tri)
 
 static std::mt19937& GameRng();
 
+static void SpawnPegPop(GameState& game, const Peg& peg)
+{
+    PegPopEffect fx;
+    fx.x = peg.x;
+    fx.y = peg.y;
+    fx.timer = 0.0f;
+    fx.duration = 0.35f;
+
+    if (peg.type == PegType::Orange) fx.colour = { 255, 160, 40, 255 };
+    else if (peg.type == PegType::Purple) fx.colour = { 220, 80, 240, 255 };
+    else fx.colour = { 80, 160, 255, 255 };
+
+    constexpr int NUM_PARTICLES = 10;
+    for (int i = 0; i < NUM_PARTICLES; ++i)
+    {
+        const float angle = (static_cast<float>(i) / NUM_PARTICLES) * SDL_PI_F * 2.0f +
+            (std::uniform_real_distribution<float>(-0.2f, 0.2f)(GameRng()));
+        const float speed = std::uniform_real_distribution<float>(70.0f, 160.0f)(GameRng());
+        PegPopParticle p;
+        p.x = peg.x;
+        p.y = peg.y;
+        p.vx = std::cos(angle) * speed;
+        p.vy = std::sin(angle) * speed;
+        p.radius = std::uniform_real_distribution<float>(2.0f, 4.0f)(GameRng());
+        fx.particles.push_back(p);
+    }
+    game.pegPops.push_back(fx);
+}
+
+static void DrawPegPops(SDL_Renderer* r, const std::vector<PegPopEffect>& pops)
+{
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
+    for (const auto& fx : pops)
+    {
+        const float progress = fx.timer / fx.duration;
+        const float alphaNorm = std::max(0.0f, 1.0f - progress);
+        const Uint8 alpha = static_cast<Uint8>(255.0f * alphaNorm);
+
+        // Expanding shockwave ring
+        const float ringRadius = PEG_RADIUS + progress * 22.0f;
+        SDL_SetRenderDrawColor(r, fx.colour.r, fx.colour.g, fx.colour.b, alpha);
+        DrawCircleOutline(r, fx.x, fx.y, ringRadius, 2.0f);
+
+        // Quick bright core flash
+        if (progress < 0.3f)
+        {
+            const float flashP = 1.0f - (progress / 0.3f);
+            SDL_SetRenderDrawColor(r, 255, 255, 255, static_cast<Uint8>(200.0f * flashP));
+            DrawFilledCircle(r, fx.x, fx.y, PEG_RADIUS * (1.0f + 0.3f * flashP));
+        }
+
+        // Flying bursting sparks
+        for (const auto& p : fx.particles)
+        {
+            const float rad = std::max(0.5f, p.radius * alphaNorm);
+            SDL_SetRenderDrawColor(r, fx.colour.r, fx.colour.g, fx.colour.b, alpha);
+            DrawFilledCircle(r, p.x, p.y, rad);
+        }
+    }
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
+}
+
 static void QueueRemainingPegs(std::vector<Peg>& pegs, std::vector<int>& hitOrder)
 {
     std::vector<int> rest;
@@ -1206,6 +1303,7 @@ static void UpdateBall(Ball& ball, std::vector<Peg>& pegs, std::vector<int>& hit
                 }
 
                 // Delete the peg immediately so the ball can drop through
+                SpawnPegPop(game, peg);
                 peg.removed = true;
                 PlaySfx(Sfx::PegRemove);
 
@@ -1862,7 +1960,7 @@ int main(int argc, char* argv[])
         lastTicks = now;
         frameDt = std::min(frameDt, MAX_FRAME_DT);
         if (screen == Screen::Paused) frameDt = 0.0f;
-        else if (fastForward && screen == Screen::Playing) frameDt *= GAME_SPEED_FAST;
+        else if (fastForward && screen == Screen::Playing && !game.shotInProgress && !ball.active) frameDt *= GAME_SPEED_FAST;
 
         // ---- Music ----
         Music music = Music::Menu;
@@ -1900,7 +1998,7 @@ int main(int argc, char* argv[])
             DrawBoldText("Press Left Mouse", 65.0f, 390.0f);
             DrawBoldText("To Shoot", 65.0f, 418.0f);
             DrawBoldText("Hold Right Mouse", 65.0f, 457.0f);
-            DrawBoldText("To Speed Up Time", 65.0f, 485.0f);
+            DrawBoldText("To Speed Up Bucket", 65.0f, 485.0f);
             DrawBoldText("Press ESC", 65.0f, 524.0f);
             DrawBoldText("To Pause", 65.0f, 552.0f);
 
@@ -2015,6 +2113,21 @@ int main(int argc, char* argv[])
         game.ballBonusPopups.erase(std::remove_if(game.ballBonusPopups.begin(), game.ballBonusPopups.end(),
             [](const BallBonusPopup& b) { return b.timer <= 0.0f; }),
             game.ballBonusPopups.end());
+
+        // Update peg pop particles
+        for (auto& fx : game.pegPops)
+        {
+            fx.timer += frameDt;
+            for (auto& p : fx.particles)
+            {
+                p.x += p.vx * frameDt;
+                p.y += p.vy * frameDt;
+                p.vy += 300.0f * frameDt; // slight gravity pull on sparks
+            }
+        }
+        game.pegPops.erase(std::remove_if(game.pegPops.begin(), game.pegPops.end(),
+            [](const PegPopEffect& fx) { return fx.timer >= fx.duration; }),
+            game.pegPops.end());
 
         // Animate dropping free balls down the chute
         for (auto& drop : game.droppingBalls)
@@ -2163,6 +2276,7 @@ int main(int argc, char* argv[])
             removeTimer += frameDt;
             while (removeTimer >= removeInterval && !hitOrder.empty())
             {
+                SpawnPegPop(game, pegs[hitOrder.front()]);
                 pegs[hitOrder.front()].removed = true;
                 PlaySfx(Sfx::PegRemove);
                 hitOrder.erase(hitOrder.begin());
@@ -2297,6 +2411,7 @@ int main(int argc, char* argv[])
             DrawFilledCircle(renderer, ball.x, ball.y, BALL_RADIUS);
         }
 
+        DrawPegPops(renderer, game.pegPops);
         DrawFloatingTexts(renderer, game.floaters);
 
         if (zoomed)
