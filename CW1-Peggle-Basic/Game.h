@@ -1,9 +1,11 @@
 #pragma once
 
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_dialog.h>
 #include <string>
 #include <vector>
 #include <random>
+#include <mutex>
 
 #include "Config.h"
 #include "Peg.h"
@@ -229,7 +231,8 @@ enum class Action
     CloseStyleShots,
     ContinueRun,
     NewRun,
-    CancelRunPopup
+    CancelRunPopup,
+    ImportScores
 };
 
 struct Button
@@ -250,6 +253,9 @@ public:
     bool Initialize();
     void Run();
 
+    void QueueImports(const std::vector<std::string>& paths);
+    void QueueImportStatus(const std::string& msg);
+
 private:
     void HandleEvents();
     void Update(float frameDt);
@@ -262,6 +268,7 @@ private:
     void GoToMenu();
     void SaveCurrentScore();
     void SaveChallengeScore();
+    void ImportScoresDialog();
 
     void AwardFreeBall();
     void CheckFreeBalls();
@@ -305,6 +312,13 @@ private:
 
     RunState m_activeRun;
     std::vector<ScoreEntry> m_scores;
+
+    // Thread-safe import handling
+    std::mutex m_importMutex;
+    std::vector<std::string> m_pendingImports;
+    std::string m_pendingStatus;
+    std::string m_importStatusMsg;
+    float m_importStatusTimer = 0.0f;
 
     Ball m_ball;
     Bucket m_bucket;

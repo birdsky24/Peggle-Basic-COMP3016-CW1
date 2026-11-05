@@ -342,6 +342,9 @@ namespace
             buttons.push_back({ { 60.0f, 214.0f, 240.0f, 44.0f }, "SETTINGS",     "", Action::OpenSettings, 0 });
             buttons.push_back({ { 60.0f, 268.0f, 240.0f, 44.0f }, "STYLE SHOTS",  "", Action::OpenStyleShots, 0 });
             buttons.push_back({ { 60.0f, 322.0f, 240.0f, 44.0f }, "QUIT",         "", Action::Quit, 0 });
+
+            // Centered directly below the Leaderboard table in the empty lower-right region
+            buttons.push_back({ { 448.0f, 470.0f, 240.0f, 44.0f }, "IMPORT SCORES", "", Action::ImportScores, 0 });
         }
         else if (screen == Screen::Paused)
         {
@@ -723,7 +726,55 @@ void Game::CheckFreeBalls()
     }
 }
 
-void Game::AddPegPopup(const Peg& peg, int points)
+void Game::QueueImports(const std::vector<std::string>&paths)
+{
+    std::lock_guard<std::mutex> lock(m_importMutex);
+    m_pendingImports.insert(m_pendingImports.end(), paths.begin(), paths.end());
+}
+
+void Game::QueueImportStatus(const std::string & msg)
+{
+    std::lock_guard<std::mutex> lock(m_importMutex);
+    m_pendingStatus = msg;
+}
+
+void Game::ImportScoresDialog()
+{
+    static const SDL_DialogFileFilter filters[] = {
+        { "Leaderboard file (*.dat)", "dat" },
+        { "All files (*.*)", "*" }
+    };
+
+    SDL_ShowOpenFileDialog(
+        [](void* userdata, const char* const* filelist, int filter) {
+            (void)filter;
+            if (!userdata) return;
+            Game* game = static_cast<Game*>(userdata);
+            if (!filelist)
+            {
+                game->QueueImportStatus("IMPORT ERROR");
+                return;
+            }
+            std::vector<std::string> paths;
+            for (const char* const* f = filelist; *f != nullptr; ++f)
+            {
+                paths.push_back(*f);
+            }
+            if (!paths.empty())
+            {
+                game->QueueImports(paths);
+            }
+        },
+        this,
+        m_window.get(),
+        filters,
+        2,
+        nullptr,
+        true
+    );
+}
+
+void Game::AddPegPopup(const Peg & peg, int points)
 {
     FloatingText f;
     f.text = FormatNumber(points);
@@ -758,7 +809,7 @@ void Game::AddStyle(const char* name, int points, float x, float y)
     CheckFreeBalls();
 }
 
-void Game::SpawnPegPop(const Peg& peg)
+void Game::SpawnPegPop(const Peg & peg)
 {
     PegPopEffect fx;
     fx.x = peg.x;
@@ -817,12 +868,11 @@ void Game::StartBallLoadAnim(float delay)
 {
     if (m_game.ballsLeft <= 0) return;
 
-    // Take the top ball from the reserve chute
     m_game.ballsLeft--;
 
     BallLoadAnim& anim = m_game.ballLoadAnim;
     anim.active = true;
-    anim.timer = -delay; // Negative timer delays the start
+    anim.timer = -delay;
     anim.duration = 0.26f;
     anim.startX = BORDER_LEFT / 2.0f;
     anim.startY = GetStackBallY(m_game.ballsLeft, m_game.ballsLeft + 1);
@@ -843,7 +893,7 @@ void Game::StartLevel(int level)
         m_activeRun.noFail = true;
 
     if (m_activeRun.active && m_activeRun.noReload && level > 1)
-        m_game.ballsLeft = m_activeRun.savedBalls;
+        m_game.ballsLeft = std::max(1, m_activeRun.savedBalls);
 
     for (const Peg& peg : m_pegs)
         if (peg.type == PegType::Orange) m_game.totalOrange++;
@@ -1047,7 +1097,7 @@ void Game::SaveChallengeScore()
     }
 }
 
-void Game::DoAction(const Button& b)
+void Game::DoAction(const Button & b)
 {
     if (b.action != Action::None) PlaySfx(Sfx::ButtonClick);
     switch (b.action)
@@ -1154,7 +1204,21 @@ void Game::DoAction(const Button& b)
         break;
 
     case Action::MainMenu:
+        if (m_game.levelComplete && m_activeRun.active && m_currentLevel < LevelCount())
+        {
+            m_activeRun.levelScores[m_currentLevel - 1] = m_game.score;
+            m_activeRun.completedCount = std::max(m_activeRun.completedCount, m_currentLevel);
+            m_activeRun.currentLevel = m_currentLevel + 1;
+            if (m_activeRun.noReload)
+                m_activeRun.savedBalls = std::max(1, m_game.ballsLeft);
+            SaveRunToFile(m_activeRun);
+            DeleteSavedLevel();
+        }
         GoToMenu();
+        break;
+
+    case Action::ImportScores:
+        ImportScoresDialog();
         break;
 
     case Action::NextLevel:
@@ -1165,20 +1229,34 @@ void Game::DoAction(const Button& b)
             m_activeRun.completedCount = std::max(m_activeRun.completedCount, m_currentLevel);
             m_activeRun.currentLevel = m_currentLevel + 1;
             if (m_activeRun.noReload)
-                m_activeRun.savedBalls = m_game.ballsLeft;
+                m_activeRun.savedBalls = std::max(1, m_game.ballsLeft); // Starts with 1 shot if beaten on final ball
             SaveRunToFile(m_activeRun);
         }
         StartLevel(m_currentLevel + 1);
         break;
 
     case Action::SwitchToNoFail:
-        if (m_activeRun.active && m_activeRun.noReload && m_game.ballsLeft > 0 && !m_game.ballBonusActive)
+        if (m_activeRun.active && m_activeRun.noReload && !m_game.ballBonusActive)
         {
-            m_game.ballBonusActive = true;
-            m_game.ballBonusShown = m_game.ballsLeft;
-            m_game.ballBonusLayoutCount = m_game.ballsLeft;
-            m_game.ballBonusTimer = 0.0f;
-            m_game.convertingToNoFail = true;
+            if (m_game.ballsLeft > 0)
+            {
+                m_game.ballBonusActive = true;
+                m_game.ballBonusShown = m_game.ballsLeft;
+                m_game.ballBonusLayoutCount = m_game.ballsLeft;
+                m_game.ballBonusTimer = 0.0f;
+                m_game.convertingToNoFail = true;
+            }
+            else
+            {
+                // Converted with 0 balls left: no points awarded from nowhere
+                m_activeRun.noReload = false;
+                m_activeRun.noFail = true;
+                m_activeRun.savedBalls = STARTING_BALLS;
+                SaveRunToFile(m_activeRun);
+                m_scoreSaved = false;
+                m_chalScoreSaved = false;
+                PlaySfx(Sfx::ButtonClick);
+            }
         }
         break;
 
@@ -1188,7 +1266,7 @@ void Game::DoAction(const Button& b)
     }
 }
 
-bool Game::BounceOffTriangle(const Triangle& tri)
+bool Game::BounceOffTriangle(const Triangle & tri)
 {
     float bestX = 0.0f, bestY = 0.0f;
     float bestDistSq = 1.0e30f;
@@ -1526,11 +1604,7 @@ void Game::UpdateBall(float dt)
             m_game.bucketPoints = m_game.ultraFever ? ULTRA_BUCKET_POINTS : FEVER_BUCKET_POINTS[bucket];
             PlaySfx(m_game.bucketPoints >= ULTRA_BUCKET_POINTS ? Sfx::FeverBucketTop : Sfx::FeverBucket);
 
-            if (m_activeRun.active && m_activeRun.noReload)
-            {
-                AwardFreeBall();
-                PlaySfx(Sfx::FreeBall);
-            }
+            // Removed: free ball is no longer awarded here
 
             m_game.finale.fireworksActive = true;
             m_game.finale.fireworksTimer = 0.0f;
@@ -1921,6 +1995,54 @@ void Game::HandleEvents()
 
 void Game::Update(float frameDt)
 {
+    if (m_importStatusTimer > 0.0f)
+        m_importStatusTimer -= frameDt;
+
+    std::vector<std::string> toImport;
+    std::string queuedStatus;
+    {
+        std::lock_guard<std::mutex> lock(m_importMutex);
+        if (!m_pendingImports.empty())
+        {
+            toImport = std::move(m_pendingImports);
+            m_pendingImports.clear();
+        }
+        if (!m_pendingStatus.empty())
+        {
+            queuedStatus = std::move(m_pendingStatus);
+            m_pendingStatus.clear();
+        }
+    }
+
+    if (!queuedStatus.empty())
+    {
+        m_importStatusMsg = queuedStatus;
+        m_importStatusTimer = 2.5f;
+        PlaySfx(Sfx::RouletteLose);
+    }
+
+    if (!toImport.empty())
+    {
+        bool anySuccess = false;
+        for (const auto& path : toImport)
+        {
+            if (MergeScoresFromFile(path.c_str()))
+                anySuccess = true;
+        }
+        m_scores = LoadScores();
+        if (anySuccess)
+        {
+            m_importStatusMsg = "SCORES IMPORTED!";
+            PlaySfx(Sfx::FreeBall);
+        }
+        else
+        {
+            m_importStatusMsg = "IMPORT FAILED";
+            PlaySfx(Sfx::RouletteLose);
+        }
+        m_importStatusTimer = 2.5f;
+    }
+
     if (m_screen == Screen::MainMenu) return;
 
     if (m_game.shot.freeBallFlash > 0.0f)
@@ -1940,7 +2062,6 @@ void Game::Update(float frameDt)
         anim.timer += frameDt;
         const float t = std::max(0.0f, std::min(1.0f, anim.timer / anim.duration));
 
-        // Shoots straight up out the tube
         anim.curX = anim.startX;
         anim.curY = anim.startY + (anim.apexY - anim.startY) * (t * t);
 
@@ -1965,7 +2086,6 @@ void Game::Update(float frameDt)
     m_game.droppingBalls.erase(std::remove_if(m_game.droppingBalls.begin(), m_game.droppingBalls.end(),
         [](const DroppingBall& d) { return d.settled; }), m_game.droppingBalls.end());
 
-    // If waiting for a free ball to finish dropping into the stack, start loading after it lands
     if (!m_game.shotInProgress && !m_ball.active && m_hitOrder.empty() &&
         !m_game.launcherLoaded && !m_game.ballLoadAnim.active && !m_game.roulette.active &&
         !m_game.feverActive && !m_game.levelComplete && m_game.droppingBalls.empty() &&
@@ -2325,6 +2445,14 @@ void Game::Render()
                 DrawText(renderer, levelScores[0].name, 585.0f, y, 1.5f);
                 DrawText(renderer, scoreText, scoreX, y, 1.5f);
             }
+        }
+
+        if (m_importStatusTimer > 0.0f && !m_importStatusMsg.empty())
+        {
+            const SDL_Color statusCol = (m_importStatusMsg == "SCORES IMPORTED!") ? COL_GREEN : COL_RED;
+            SDL_SetRenderDrawColor(renderer, statusCol.r, statusCol.g, statusCol.b, 255);
+            const float msgX = 568.0f - TextWidth(m_importStatusMsg, 1.5f) / 2.0f;
+            DrawText(renderer, m_importStatusMsg, msgX, 522.0f, 1.5f);
         }
 
         if (hoveredLevel > 0)
