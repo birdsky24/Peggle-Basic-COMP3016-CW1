@@ -1,8 +1,0 @@
-# 1. Ignore third-party / external code from language statistics
-# (change 'vendor' or 'libs' to whatever folder your third-party code is in)
-vendor/** linguist-vendored
-libs/** linguist-vendored
-external/** linguist-vendored
-
-# 2. Treat all .h header files as C++
-*.h linguist-language=C++

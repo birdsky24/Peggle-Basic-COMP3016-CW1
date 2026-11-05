@@ -1,0 +1,5 @@
+# 1. Ignore the SDL3 Framework folder from language stats
+**/Frameworks/** linguist-vendored
+
+# 2. Force GitHub to count all .h files as C++
+*.h linguist-language=C++
