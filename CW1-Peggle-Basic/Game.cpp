@@ -6,8 +6,11 @@
 #include <cmath>
 #include <fstream>
 
-namespace
+    namespace
 {
+    // =========================================================================
+    // Color Palette Constants
+    // =========================================================================
     static const SDL_Color COL_WHITE = { 255, 255, 255, 255 };
     static const SDL_Color COL_YELLOW = { 255, 225,  40, 255 };
     static const SDL_Color COL_ORANGE = { 255, 150,  30, 255 };
@@ -15,12 +18,14 @@ namespace
     static const SDL_Color COL_CYAN = { 120, 230, 235, 255 };
     static const SDL_Color COL_RED = { 240,  70,  60, 255 };
 
+    // Standard Mersenne Twister pseudo-random number generator for gameplay variance
     std::mt19937& GameRng()
     {
         static std::mt19937 rng{ std::random_device{}() };
         return rng;
     }
 
+    // Inserts thousand-separator commas into a number (e.g., 1000000 -> "1,000,000")
     std::string FormatNumber(long long n)
     {
         std::string s = std::to_string(n);
@@ -29,11 +34,13 @@ namespace
         return s;
     }
 
+    // Calculates pixel width of debug text. The built-in SDL debug font is 8 pixels wide per glyph at scale 1.0.
     float TextWidth(const std::string& text, float scale)
     {
         return static_cast<float>(text.size()) * 8.0f * scale;
     }
 
+    // Renders text using SDL's built-in bitmap debug font
     void DrawText(SDL_Renderer* r, const std::string& text, float x, float y, float scale)
     {
         SDL_SetRenderScale(r, scale, scale);
@@ -41,22 +48,27 @@ namespace
         SDL_SetRenderScale(r, 1.0f, 1.0f);
     }
 
+    // Draws text with a 1-pixel black outline in 8 cardinal/diagonal directions for readability over busy backgrounds
     void DrawOutlinedText(SDL_Renderer* r, const std::string& text, float x, float y, float scale,
         SDL_Color colour, Uint8 alpha = 255)
     {
         SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
         const float o = std::max(1.0f, std::floor(scale / 2.0f));
+
+        // Draw black background dropshadow/outline
         SDL_SetRenderDrawColor(r, 0, 0, 0, alpha);
         for (int dx = -1; dx <= 1; ++dx)
             for (int dy = -1; dy <= 1; ++dy)
                 if (dx != 0 || dy != 0)
                     DrawText(r, text, x + dx * o, y + dy * o, scale);
 
+        // Draw foreground colored text
         SDL_SetRenderDrawColor(r, colour.r, colour.g, colour.b, alpha);
         DrawText(r, text, x, y, scale);
         SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
     }
 
+    // Rasterizes a solid circle using horizontal scanline spans (Pythagorean theorem)
     void DrawFilledCircle(SDL_Renderer* r, float cx, float cy, float radius)
     {
         const int ir = static_cast<int>(std::ceil(radius));
@@ -67,6 +79,7 @@ namespace
         }
     }
 
+    // Draws a circular outline approximated by line segments with configurable border thickness
     void DrawCircleOutline(SDL_Renderer* r, float cx, float cy, float radius, float thickness = 2.0f)
     {
         constexpr int SEGMENTS = 24;
@@ -84,11 +97,13 @@ namespace
         }
     }
 
+    // Point-in-rectangle AABB collision check for UI mouse interactions
     bool PointInRect(float x, float y, const SDL_FRect& r)
     {
         return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
     }
 
+    // Dims the entire screen with a translucent black overlay (modal/pause backdrop)
     void DrawDim(SDL_Renderer* r, Uint8 alpha)
     {
         const SDL_FRect all = { 0.0f, 0.0f, static_cast<float>(WINDOW_W), static_cast<float>(WINDOW_H) };
@@ -98,6 +113,7 @@ namespace
         SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
     }
 
+    // Draws a standard UI panel container with a dark background and light border
     void DrawPanel(SDL_Renderer* r, const SDL_FRect& panel)
     {
         SDL_SetRenderDrawColor(r, 20, 24, 40, 255);
@@ -106,6 +122,7 @@ namespace
         SDL_RenderRect(r, &panel);
     }
 
+    // Renders interactive buttons with hover states and optional two-line labels
     void DrawButtons(SDL_Renderer* r, const std::vector<Button>& buttons, float mouseX, float mouseY)
     {
         for (const Button& b : buttons)
@@ -113,20 +130,24 @@ namespace
             const bool enabled = (b.action != Action::None);
             const bool hover = enabled && PointInRect(mouseX, mouseY, b.rect);
 
-            if (!enabled) SDL_SetRenderDrawColor(r, 35, 38, 50, 255);
-            else if (hover) SDL_SetRenderDrawColor(r, 80, 110, 170, 255);
-            else SDL_SetRenderDrawColor(r, 45, 60, 100, 255);
+            // Button background fill
+            if (!enabled)      SDL_SetRenderDrawColor(r, 35, 38, 50, 255);
+            else if (hover)    SDL_SetRenderDrawColor(r, 80, 110, 170, 255);
+            else               SDL_SetRenderDrawColor(r, 45, 60, 100, 255);
             SDL_RenderFillRect(r, &b.rect);
 
+            // Button border
             if (enabled) SDL_SetRenderDrawColor(r, 200, 200, 210, 255);
-            else SDL_SetRenderDrawColor(r, 80, 80, 90, 255);
+            else         SDL_SetRenderDrawColor(r, 80, 80, 90, 255);
             SDL_RenderRect(r, &b.rect);
 
+            // Button label text
             if (enabled) SDL_SetRenderDrawColor(r, 255, 255, 255, 255);
-            else SDL_SetRenderDrawColor(r, 110, 110, 120, 255);
+            else         SDL_SetRenderDrawColor(r, 110, 110, 120, 255);
 
             if (!b.label2.empty())
             {
+                // Multi-line button layout
                 const float scale = 1.2f;
                 const float lineH = 8.0f * scale;
                 const float totalH = 2.0f * lineH + 3.0f;
@@ -137,6 +158,7 @@ namespace
             }
             else
             {
+                // Single-line centered text
                 const float scale = (b.rect.w < 100.0f) ? 3.0f : 2.0f;
                 DrawText(r, b.label,
                     b.rect.x + (b.rect.w - TextWidth(b.label, scale)) / 2.0f,
@@ -145,6 +167,9 @@ namespace
         }
     }
 
+    // =========================================================================
+    // UI Layout: Level Select Dialog
+    // =========================================================================
     constexpr int LEVELS_PER_ROW = 5;
 
     SDL_FRect LevelSelectPanel(int levelCount)
@@ -186,6 +211,9 @@ namespace
         DrawButtons(r, GetLevelSelectButtons(levelCount), mouseX, mouseY);
     }
 
+    // =========================================================================
+    // UI Layout: Settings & Audio Dialog
+    // =========================================================================
     SDL_FRect SettingsPanel() { return { LAUNCHER_X - 180.0f, 170.0f, 360.0f, 240.0f }; }
     SDL_FRect VolumeSliderBar()
     {
@@ -214,6 +242,7 @@ namespace
         SDL_SetRenderDrawColor(r, 255, 255, 255, 255);
         DrawText(r, volText, LAUNCHER_X - TextWidth(volText, 2.0f) / 2.0f, panel.y + 75.0f, 2.0f);
 
+        // Volume slider track and filled progress
         const SDL_FRect bar = VolumeSliderBar();
         SDL_SetRenderDrawColor(r, 35, 38, 50, 255);
         SDL_RenderFillRect(r, &bar);
@@ -226,10 +255,12 @@ namespace
         SDL_SetRenderDrawColor(r, 180, 190, 210, 255);
         SDL_RenderRect(r, &bar);
 
+        // 100% volume midpoint notch
         const float midX = bar.x + bar.w * 0.5f;
         SDL_SetRenderDrawColor(r, 200, 200, 220, 255);
         SDL_RenderLine(r, midX, bar.y - 2.0f, midX, bar.y + bar.h + 2.0f);
 
+        // Draggable slider knob
         const float knobX = bar.x + bar.w * progress;
         const float knobY = bar.y + bar.h / 2.0f;
         SDL_SetRenderDrawColor(r, 255, 255, 255, 255);
@@ -240,6 +271,9 @@ namespace
         DrawButtons(r, GetSettingsButtons(), mouseX, mouseY);
     }
 
+    // =========================================================================
+    // UI Layout: Style Shots Help Screen
+    // =========================================================================
     SDL_FRect StyleShotsPanel() { return { LAUNCHER_X - 290.0f, 35.0f, 580.0f, 530.0f }; }
     std::vector<Button> GetStyleShotsButtons()
     {
@@ -298,6 +332,9 @@ namespace
         DrawButtons(r, GetStyleShotsButtons(), mouseX, mouseY);
     }
 
+    // =========================================================================
+    // UI Layout: Active 10-Run Continue/New Prompt
+    // =========================================================================
     SDL_FRect RunPromptPanel() { return { LAUNCHER_X - 170.0f, 180.0f, 340.0f, 240.0f }; }
     std::vector<Button> GetRunPromptButtons()
     {
@@ -332,6 +369,9 @@ namespace
         DrawButtons(r, GetRunPromptButtons(), mouseX, mouseY);
     }
 
+    // =========================================================================
+    // Screen Context Button Generators
+    // =========================================================================
     std::vector<Button> GetScreenButtons(Screen screen, int currentLevel, int levelCount, bool canSave, bool scoreSaved, const RunState& activeRun, bool chalScoreSaved, const std::string& chalNameInput)
     {
         std::vector<Button> buttons;
@@ -343,7 +383,7 @@ namespace
             buttons.push_back({ { 60.0f, 268.0f, 240.0f, 44.0f }, "STYLE SHOTS",  "", Action::OpenStyleShots, 0 });
             buttons.push_back({ { 60.0f, 322.0f, 240.0f, 44.0f }, "QUIT",         "", Action::Quit, 0 });
 
-            // Centered directly below the Leaderboard table in the empty lower-right region
+            // Placed in the empty space below the leaderboard table
             buttons.push_back({ { 448.0f, 470.0f, 240.0f, 44.0f }, "IMPORT SCORES", "", Action::ImportScores, 0 });
         }
         else if (screen == Screen::Paused)
@@ -354,6 +394,7 @@ namespace
             const float btnStep = 44.0f;
             buttons.push_back({ { x, y, 300.0f, btnH }, "RESUME", "", Action::Resume, 0 }); y += btnStep;
 
+            // In No Reload mode past level 1, restarting the level is disabled
             const bool canRestart = !(activeRun.active && activeRun.noReload && currentLevel > 1);
             buttons.push_back({ { x, y, 300.0f, btnH }, "RESTART", "", canRestart ? Action::Restart : Action::None, 0 }); y += btnStep;
             buttons.push_back({ { x, y, 300.0f, btnH }, "STYLE SHOTS",  "", Action::OpenStyleShots, 0 }); y += btnStep;
@@ -415,6 +456,9 @@ namespace
         return buttons;
     }
 
+    // =========================================================================
+    // Peg & Score Calculation Helpers
+    // =========================================================================
     int BasePegScore(PegType type)
     {
         if (type == PegType::Orange) return SCORE_ORANGE;
@@ -422,6 +466,7 @@ namespace
         return SCORE_BLUE;
     }
 
+    // Returns score multiplier based on total orange pegs eliminated in the current level
     int FeverMultiplier(int orangeHit)
     {
         if (orangeHit >= 22) return 10;
@@ -431,11 +476,13 @@ namespace
         return 1;
     }
 
+    // Peggle formula: (Sum of Hit Peg Values * Number of Hit Pegs) + Style Points
     long long LiveShotScore(const ShotStats& shot)
     {
         return static_cast<long long>(shot.pegScoreSum) * shot.pegsHit + shot.stylePoints;
     }
 
+    // Returns the Y position of a ball in the left-hand reserve chute stack, squeezing pitch if full
     float GetStackBallY(int index, int totalBalls)
     {
         const float circleR = FREE_BALL_CIRCLE_RADIUS;
@@ -451,6 +498,7 @@ namespace
         return firstY - index * pitch;
     }
 
+    // True if every single peg on the board has been cleared (Ultra Extreme Fever condition)
     bool AllPegsCleared(const std::vector<Peg>& pegs)
     {
         for (const Peg& peg : pegs)
@@ -458,11 +506,13 @@ namespace
         return true;
     }
 
+    // Returns horizontal center for the 6 partition circles creating the 5 fever buckets
     float FeverCircleX(int k)
     {
         return PLAY_LEFT + k * (PLAY_RIGHT - PLAY_LEFT) / static_cast<float>(FEVER_BUCKET_COUNT);
     }
 
+    // Solves ballistic projectile motion to find the initial aim unit vector (dirX, dirY) toward the mouse
     void GetAimDirection(float mouseX, float mouseY, float& dirX, float& dirY)
     {
         const float dx = mouseX - LAUNCHER_X;
@@ -474,10 +524,12 @@ namespace
         float angle;
         if (adx < 1.0f)
         {
+            // Aiming nearly straight down
             angle = SDL_PI_F / 2.0f;
         }
         else
         {
+            // Solve projectile motion with gravity: dy = x*tan(theta) - (g*x^2)/(2*v^2 * cos^2(theta))
             const float a = GRAVITY * adx * adx / (2.0f * SHOT_SPEED * SHOT_SPEED);
             const float disc = adx * adx - 4.0f * a * (a - dy);
 
@@ -487,11 +539,12 @@ namespace
                 angle = std::atan2(dy, adx);
         }
 
-        angle = std::max(angle, minAngle);
+        angle = std::max(angle, minAngle); // Prevent aiming backwards into the ceiling
         dirX = side * std::cos(angle);
         dirY = std::sin(angle);
     }
 
+    // Traces the ballistic parabolic flight path and renders dotted aiming guide with an arrowhead
     void DrawAimGuide(SDL_Renderer* r, const std::vector<Peg>& pegs, float dirX, float dirY)
     {
         float x = LAUNCHER_X;
@@ -506,6 +559,7 @@ namespace
 
         SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
 
+        // Raymarch forward in fixed time increments
         while (travelled < GUIDE_LENGTH)
         {
             vy += GRAVITY * dt;
@@ -515,12 +569,14 @@ namespace
             x = nx;
             y = ny;
 
+            // Stop guide if trajectory exits boundary
             if (x < PLAY_LEFT || x > PLAY_RIGHT || y > PLAY_BOTTOM)
             {
                 leftScreen = true;
                 break;
             }
 
+            // Stop guide immediately if it intercepts an active peg
             bool touchingPeg = false;
             for (const Peg& peg : pegs)
             {
@@ -536,6 +592,7 @@ namespace
             }
             if (touchingPeg) break;
 
+            // Draw fading path dots
             if (travelled >= nextDot)
             {
                 const float t = travelled / GUIDE_LENGTH;
@@ -546,6 +603,7 @@ namespace
             }
         }
 
+        // Draw directional arrowhead at trajectory termination point
         if (!leftScreen)
         {
             const float len = std::sqrt(vx * vx + vy * vy);
@@ -565,6 +623,7 @@ namespace
         SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
     }
 
+    // Calculates oscillating percentage during 50/50 roulette spin animation
     int RouletteReturnChance(float t, bool returned)
     {
         const float p = std::min(1.0f, t / ROULETTE_SPIN_TIME);
@@ -574,6 +633,9 @@ namespace
         return std::max(0, std::min(chance, 100));
     }
 
+    // =========================================================================
+    // Save State Serialization
+    // =========================================================================
     void SaveRunToFile(const RunState& run)
     {
         if (!run.active)
@@ -627,7 +689,12 @@ namespace
     }
 }
 
+// =============================================================================
+// Game Engine Implementation
+// =============================================================================
+
 Game::Game() = default;
+
 Game::~Game()
 {
     AudioShutdown();
@@ -655,10 +722,12 @@ bool Game::Initialize()
     SDL_SetRenderVSync(m_renderer.get(), 1);
     AudioInit();
 
+    // Off-screen render target for dynamic slow-mo camera zooms
     m_worldTex.reset(SDL_CreateTexture(m_renderer.get(), SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, WINDOW_W, WINDOW_H));
     if (m_worldTex)
         SDL_SetTextureScaleMode(m_worldTex.get(), SDL_SCALEMODE_LINEAR);
 
+    // Optional graphical 100% all-pegs ribbon badge
     SDL_Surface* ribbonSurf = SDL_LoadBMP("ribbon.bmp");
     if (ribbonSurf)
     {
@@ -673,21 +742,25 @@ bool Game::Initialize()
     return true;
 }
 
+// Main game loop (heartbeat)
 void Game::Run()
 {
     while (m_running)
     {
         HandleEvents();
 
+        // High-precision delta time calculation
         const Uint64 now = SDL_GetTicksNS();
         float frameDt = static_cast<float>(now - m_lastTicks) / 1.0e9f;
         m_lastTicks = now;
-        frameDt = std::min(frameDt, MAX_FRAME_DT);
+        frameDt = std::min(frameDt, MAX_FRAME_DT); // Clamp frame lag spikes to avoid tunneling
 
+        // Pause / Fast-forward handling
         if (m_screen == Screen::Paused) frameDt = 0.0f;
         else if (m_fastForward && m_screen == Screen::Playing && !m_game.shotInProgress && !m_ball.active)
             frameDt *= GAME_SPEED_FAST;
 
+        // Dynamic soundtrack transitions
         Music music = Music::Menu;
         if (m_screen == Screen::Playing)
             music = m_game.feverActive ? Music::Fever : Music::Level;
@@ -701,6 +774,7 @@ void Game::Run()
     }
 }
 
+// Spawns a physical dropping ball animation in the left reserve chute
 void Game::AwardFreeBall()
 {
     const int targetIdx = m_game.ballsLeft;
@@ -713,6 +787,7 @@ void Game::AwardFreeBall()
     m_game.droppingBalls.push_back(drop);
 }
 
+// Checks if live shot points hit the 25k, 75k, or 125k free ball thresholds
 void Game::CheckFreeBalls()
 {
     ShotStats& shot = m_game.shot;
@@ -726,18 +801,20 @@ void Game::CheckFreeBalls()
     }
 }
 
-void Game::QueueImports(const std::vector<std::string>&paths)
+// Thread-safe queues populated by the native file dialog callback
+void Game::QueueImports(const std::vector<std::string>& paths)
 {
     std::lock_guard<std::mutex> lock(m_importMutex);
     m_pendingImports.insert(m_pendingImports.end(), paths.begin(), paths.end());
 }
 
-void Game::QueueImportStatus(const std::string & msg)
+void Game::QueueImportStatus(const std::string& msg)
 {
     std::lock_guard<std::mutex> lock(m_importMutex);
     m_pendingStatus = msg;
 }
 
+// Opens the native OS file picker (SDL3 Dialog API) to select .dat files to merge
 void Game::ImportScoresDialog()
 {
     static const SDL_DialogFileFilter filters[] = {
@@ -757,36 +834,34 @@ void Game::ImportScoresDialog()
             }
             std::vector<std::string> paths;
             for (const char* const* f = filelist; *f != nullptr; ++f)
-            {
                 paths.push_back(*f);
-            }
             if (!paths.empty())
-            {
                 game->QueueImports(paths);
-            }
         },
         this,
         m_window.get(),
         filters,
         2,
         nullptr,
-        true
+        true // Allow multi-file selection
     );
 }
 
-void Game::AddPegPopup(const Peg & peg, int points)
+// Spawns score text above an impacted peg
+void Game::AddPegPopup(const Peg& peg, int points)
 {
     FloatingText f;
     f.text = FormatNumber(points);
     f.x = peg.x;
     f.y = peg.y;
     f.timer = PEG_POPUP_TIME;
-    if (peg.type == PegType::Orange) f.colour = { 255, 170, 60, 255 };
+    if (peg.type == PegType::Orange)      f.colour = { 255, 170, 60, 255 };
     else if (peg.type == PegType::Purple) f.colour = { 235, 130, 255, 255 };
-    else f.colour = { 130, 190, 255, 255 };
+    else                                  f.colour = { 130, 190, 255, 255 };
     m_game.floaters.push_back(f);
 }
 
+// Registers a style award (Long Shot, Lucky Bounce, etc.) and spawns text popup
 void Game::AddStyle(const char* name, int points, float x, float y)
 {
     ShotStats& shot = m_game.shot;
@@ -809,7 +884,8 @@ void Game::AddStyle(const char* name, int points, float x, float y)
     CheckFreeBalls();
 }
 
-void Game::SpawnPegPop(const Peg & peg)
+// Spawns burst particles when a peg is removed
+void Game::SpawnPegPop(const Peg& peg)
 {
     PegPopEffect fx;
     fx.x = peg.x;
@@ -817,9 +893,9 @@ void Game::SpawnPegPop(const Peg & peg)
     fx.timer = 0.0f;
     fx.duration = 0.35f;
 
-    if (peg.type == PegType::Orange) fx.colour = { 255, 160, 40, 255 };
+    if (peg.type == PegType::Orange)      fx.colour = { 255, 160, 40, 255 };
     else if (peg.type == PegType::Purple) fx.colour = { 220, 80, 240, 255 };
-    else fx.colour = { 80, 160, 255, 255 };
+    else                                  fx.colour = { 80, 160, 255, 255 };
 
     constexpr int NUM_PARTICLES = 10;
     for (int i = 0; i < NUM_PARTICLES; ++i)
@@ -838,6 +914,7 @@ void Game::SpawnPegPop(const Peg & peg)
     m_game.pegPops.push_back(fx);
 }
 
+// Spawns particles when a cashed-in ball pops in the chute
 void Game::SpawnBallPop(float bx, float by)
 {
     PegPopEffect fx;
@@ -864,6 +941,7 @@ void Game::SpawnBallPop(float bx, float by)
     m_game.pegPops.push_back(fx);
 }
 
+// Starts the visual animation of loading a ball from the reserve tube up into the launcher
 void Game::StartBallLoadAnim(float delay)
 {
     if (m_game.ballsLeft <= 0) return;
@@ -882,6 +960,7 @@ void Game::StartBallLoadAnim(float delay)
     m_game.launcherLoaded = false;
 }
 
+// Initializes a level layout, peg distribution, and resets level-specific gameplay state
 void Game::StartLevel(int level)
 {
     m_currentLevel = level;
@@ -892,6 +971,7 @@ void Game::StartLevel(int level)
     if (level == 1 && m_activeRun.active && !m_activeRun.noReload)
         m_activeRun.noFail = true;
 
+    // In No Reload mode, carry remaining balls over from the previous level (at least 1)
     if (m_activeRun.active && m_activeRun.noReload && level > 1)
         m_game.ballsLeft = std::max(1, m_activeRun.savedBalls);
 
@@ -920,6 +1000,7 @@ void Game::StartLevel(int level)
     StartBallLoadAnim();
 }
 
+// Restores level state from level_state.dat (used when resuming an ongoing session)
 void Game::RestoreLevel()
 {
     std::ifstream f(LEVEL_SAVE_FILE, std::ios::binary);
@@ -980,6 +1061,7 @@ void Game::RestoreLevel()
     StartBallLoadAnim();
 }
 
+// Serializes the current active level state to level_state.dat
 void Game::SaveLevelState()
 {
     int ballsToSave = m_game.ballsLeft + (m_game.launcherLoaded || m_ball.active || m_game.ballLoadAnim.active ? 1 : 0);
@@ -987,6 +1069,7 @@ void Game::SaveLevelState()
     int orangeToSave = m_game.orangeHit;
     std::vector<Peg> pegsToSave = m_pegs;
 
+    // If interrupted mid-shot, reset pegs hit during this turn
     if (m_ball.active || m_game.shotInProgress)
     {
         for (int idx : m_hitOrder)
@@ -1028,6 +1111,7 @@ void Game::SaveLevelState()
     }
 }
 
+// Transitions to Main Menu, preserving mid-game state if applicable
 void Game::GoToMenu()
 {
     if (m_screen == Screen::Playing || m_screen == Screen::Paused)
@@ -1055,6 +1139,7 @@ void Game::GoToMenu()
     m_scores = LoadScores();
 }
 
+// Saves a 3-letter high score entry for the individual level
 void Game::SaveCurrentScore()
 {
     if (m_nameInput.size() != 3 || m_scoreSaved) return;
@@ -1070,6 +1155,7 @@ void Game::SaveCurrentScore()
     }
 }
 
+// Saves a 10-level challenge run score (No Fail, Regular, or No Reload)
 void Game::SaveChallengeScore()
 {
     if (m_chalNameInput.size() != 3 || m_chalScoreSaved) return;
@@ -1080,12 +1166,9 @@ void Game::SaveChallengeScore()
     const long long runGrandTotal = m_activeRun.CompletedTotal();
 
     ScoreEntry chalEntry;
-    if (m_activeRun.noReload)
-        chalEntry.level = CHALLENGE_10_NO_RELOAD;
-    else if (m_activeRun.noFail)
-        chalEntry.level = CHALLENGE_10_NO_FAIL;
-    else
-        chalEntry.level = CHALLENGE_10_REGULAR;
+    if (m_activeRun.noReload)       chalEntry.level = CHALLENGE_10_NO_RELOAD;
+    else if (m_activeRun.noFail)    chalEntry.level = CHALLENGE_10_NO_FAIL;
+    else                            chalEntry.level = CHALLENGE_10_REGULAR;
 
     chalEntry.name = m_chalNameInput;
     chalEntry.score = runGrandTotal;
@@ -1097,7 +1180,8 @@ void Game::SaveChallengeScore()
     }
 }
 
-void Game::DoAction(const Button & b)
+// UI action dispatch table
+void Game::DoAction(const Button& b)
 {
     if (b.action != Action::None) PlaySfx(Sfx::ButtonClick);
     switch (b.action)
@@ -1105,7 +1189,7 @@ void Game::DoAction(const Button & b)
     case Action::Play:
         if (m_activeRun.active && (m_activeRun.currentLevel > 1 || HasSavedLevel()))
         {
-            m_runPromptOpen = true;
+            m_runPromptOpen = true; // Prompt user to continue or start fresh
         }
         else
         {
@@ -1229,7 +1313,7 @@ void Game::DoAction(const Button & b)
             m_activeRun.completedCount = std::max(m_activeRun.completedCount, m_currentLevel);
             m_activeRun.currentLevel = m_currentLevel + 1;
             if (m_activeRun.noReload)
-                m_activeRun.savedBalls = std::max(1, m_game.ballsLeft); // Starts with 1 shot if beaten on final ball
+                m_activeRun.savedBalls = std::max(1, m_game.ballsLeft); // Start with 1 ball if cleared on final shot
             SaveRunToFile(m_activeRun);
         }
         StartLevel(m_currentLevel + 1);
@@ -1248,7 +1332,7 @@ void Game::DoAction(const Button & b)
             }
             else
             {
-                // Converted with 0 balls left: no points awarded from nowhere
+                // Converted with 0 balls left: directly switch without cash-in animation
                 m_activeRun.noReload = false;
                 m_activeRun.noFail = true;
                 m_activeRun.savedBalls = STARTING_BALLS;
@@ -1266,10 +1350,13 @@ void Game::DoAction(const Button & b)
     }
 }
 
-bool Game::BounceOffTriangle(const Triangle & tri)
+// Performs collision detection and elastic response between the ball and a triangle (the bucket rims)
+bool Game::BounceOffTriangle(const Triangle& tri)
 {
     float bestX = 0.0f, bestY = 0.0f;
     float bestDistSq = 1.0e30f;
+
+    // Find the closest point on the triangle's 3 line segments to the ball center
     for (int i = 0; i < 3; ++i)
     {
         const SDL_FPoint a = tri.p[i];
@@ -1289,6 +1376,7 @@ bool Game::BounceOffTriangle(const Triangle & tri)
         }
     }
 
+    // Check if the center of the ball lies strictly inside the triangle
     float side[3];
     for (int i = 0; i < 3; ++i)
     {
@@ -1302,6 +1390,7 @@ bool Game::BounceOffTriangle(const Triangle & tri)
     const float dist = std::sqrt(bestDistSq);
     if (!inside && dist >= BALL_RADIUS) return false;
 
+    // Determine surface normal
     float nx = 0.0f, ny = -1.0f;
     if (dist > 0.0001f)
     {
@@ -1309,9 +1398,11 @@ bool Game::BounceOffTriangle(const Triangle & tri)
         ny = (inside ? bestY - m_ball.y : m_ball.y - bestY) / dist;
     }
 
+    // Positional separation to prevent penetration
     m_ball.x = bestX + nx * BALL_RADIUS;
     m_ball.y = bestY + ny * BALL_RADIUS;
 
+    // Apply restitution reflection along surface normal
     const float vn = m_ball.vx * nx + m_ball.vy * ny;
     if (vn < 0.0f)
     {
@@ -1322,9 +1413,10 @@ bool Game::BounceOffTriangle(const Triangle & tri)
         m_ball.vy -= (1.0f + PEG_BOUNCE) * vn * ny;
     }
 
-    return ny < -0.3f;
+    return ny < -0.3f; // Returns true if contact occurred on the top surface
 }
 
+// Performs collision detection and restitution reflection against static circular bumpers (Fever dividers)
 void Game::BounceOffCircle(float cx, float cy, float radius)
 {
     const float dx = m_ball.x - cx;
@@ -1341,9 +1433,11 @@ void Game::BounceOffCircle(float cx, float cy, float radius)
         ny = dy / dist;
     }
 
+    // Positional correction
     m_ball.x = cx + nx * minDist;
     m_ball.y = cy + ny * minDist;
 
+    // Velocity reflection
     const float vn = m_ball.vx * nx + m_ball.vy * ny;
     if (vn < 0.0f)
     {
@@ -1355,11 +1449,13 @@ void Game::BounceOffCircle(float cx, float cy, float radius)
     }
 }
 
+// Updates the active ball's ballistic position, wall/ceiling bounces, peg collisions, and style bonuses
 void Game::UpdateBall(float dt)
 {
     if (!m_ball.active) return;
     ShotStats& shot = m_game.shot;
 
+    // Gravity integration and movement
     m_ball.vy += GRAVITY * dt;
     const float moveX = m_ball.vx * dt;
     const float moveY = m_ball.vy * dt;
@@ -1369,7 +1465,7 @@ void Game::UpdateBall(float dt)
     shot.distSinceContact += moved;
     shot.distSinceWall += moved;
 
-    // Walls
+    // Left and right boundary wall collisions
     if (m_ball.x - BALL_RADIUS < PLAY_LEFT)
     {
         m_ball.x = PLAY_LEFT + BALL_RADIUS;
@@ -1385,13 +1481,14 @@ void Game::UpdateBall(float dt)
         shot.distSinceWall = 0.0f;
     }
 
-    // Ceiling
+    // Top ceiling collision
     if (m_ball.y - BALL_RADIUS < PLAY_TOP)
     {
         m_ball.y = PLAY_TOP + BALL_RADIUS;
         m_ball.vy = std::fabs(m_ball.vy) * WALL_BOUNCE;
     }
 
+    // Predictive check for cinematic slow-motion when heading toward the last remaining orange peg
     m_game.approachingLastOrange = false;
     if (!m_game.feverActive && m_game.totalOrange > 0 && m_game.orangeHit == m_game.totalOrange - 1)
     {
@@ -1404,6 +1501,7 @@ void Game::UpdateBall(float dt)
             const float dist = std::sqrt(toX * toX + toY * toY);
             if (dist < 0.001f || speed < 1.0f || dist > SLOWMO_TRIGGER_DISTANCE) continue;
 
+            // Dot product projection: check if velocity vector is aligned directly toward the peg
             if ((m_ball.vx * toX + m_ball.vy * toY) / (speed * dist) > 0.8f)
                 m_game.approachingLastOrange = true;
         }
@@ -1414,6 +1512,7 @@ void Game::UpdateBall(float dt)
         PlaySfx(Sfx::SlowMotion);
     }
 
+    // Check collisions with all active pegs
     for (int i = 0; i < static_cast<int>(m_pegs.size()); ++i)
     {
         Peg& peg = m_pegs[i];
@@ -1425,6 +1524,7 @@ void Game::UpdateBall(float dt)
         const float distSq = dx * dx + dy * dy;
         if (distSq >= minDist * minDist) continue;
 
+        // Process distance-based style shots on fresh peg contact
         if (i != shot.lastContactPeg)
         {
             const bool nonBlue = (peg.type != PegType::Blue);
@@ -1468,10 +1568,11 @@ void Game::UpdateBall(float dt)
         }
         shot.distSinceContact = 0.0f;
 
+        // Register new peg hit
         if (!peg.hit)
         {
             peg.hit = true;
-            m_hitOrder.push_back(i);
+            m_hitOrder.push_back(i); // Scheduled for sequential pop after turn completes
 
             if (peg.type == PegType::Orange)
                 m_game.orangeHit++;
@@ -1480,11 +1581,14 @@ void Game::UpdateBall(float dt)
             shot.pegScoreSum += pegPoints;
             shot.pegsHit++;
             AddPegPopup(peg, pegPoints);
+
+            // Progressive pitch semitone shift for each peg hit in a single shot
             PlaySfx(Sfx::PegHit, std::min((shot.pegsHit - 1) * PEG_HIT_PITCH_STEP, PEG_HIT_PITCH_MAX));
             if (peg.type == PegType::Purple)
                 PlaySfx(Sfx::PurplePeg);
             CheckFreeBalls();
 
+            // Check if player filled an entire score multiplier tier in one shot
             if (peg.type == PegType::Orange)
             {
                 for (int s = 0; s < ORANGE_STAGE_COUNT; ++s)
@@ -1495,6 +1599,7 @@ void Game::UpdateBall(float dt)
                 }
             }
 
+            // Extreme Fever Trigger: Final orange peg cleared!
             if (peg.type == PegType::Orange && m_game.orangeHit == m_game.totalOrange)
             {
                 m_game.feverActive = true;
@@ -1516,6 +1621,7 @@ void Game::UpdateBall(float dt)
         if (shot.bucketEdgeHit) shot.pegAfterEdge = true;
         shot.edgeSincePeg = false;
 
+        // Resolve elastic collision with peg
         const float dist = std::sqrt(distSq);
         float nx = 0.0f, ny = -1.0f;
         if (dist > 0.0001f)
@@ -1535,6 +1641,7 @@ void Game::UpdateBall(float dt)
         }
     }
 
+    // Moving Bucket collision detection (standard play)
     if (!m_game.feverActive)
     {
         SDL_FRect bucketRect;
@@ -1549,6 +1656,7 @@ void Game::UpdateBall(float dt)
             shot.edgeSincePeg = true;
         }
 
+        // Caught inside moving bucket
         if (m_ball.x >= bucketRect.x && m_ball.x <= bucketRect.x + bucketRect.w && m_ball.y + BALL_RADIUS >= bucketRect.y)
         {
             m_ball.active = false;
@@ -1584,18 +1692,21 @@ void Game::UpdateBall(float dt)
         }
     }
 
+    // Fever partition bumper collisions
     if (m_game.feverActive)
     {
         for (int k = 0; k <= FEVER_BUCKET_COUNT; ++k)
             BounceOffCircle(FeverCircleX(k), FEVER_CIRCLE_Y, FEVER_CIRCLE_RADIUS);
     }
 
+    // Ball dropped through the bottom of the screen
     if (m_ball.y - BALL_RADIUS > PLAY_BOTTOM)
     {
         m_ball.active = false;
 
         if (m_game.feverActive)
         {
+            // Determine which extreme fever score bin the ball fell into
             const float bucketWidth = (PLAY_RIGHT - PLAY_LEFT) / static_cast<float>(FEVER_BUCKET_COUNT);
             int bucket = static_cast<int>((m_ball.x - PLAY_LEFT) / bucketWidth);
             bucket = std::max(0, std::min(bucket, FEVER_BUCKET_COUNT - 1));
@@ -1604,11 +1715,10 @@ void Game::UpdateBall(float dt)
             m_game.bucketPoints = m_game.ultraFever ? ULTRA_BUCKET_POINTS : FEVER_BUCKET_POINTS[bucket];
             PlaySfx(m_game.bucketPoints >= ULTRA_BUCKET_POINTS ? Sfx::FeverBucketTop : Sfx::FeverBucket);
 
-            // Removed: free ball is no longer awarded here
-
             m_game.finale.fireworksActive = true;
             m_game.finale.fireworksTimer = 0.0f;
 
+            // Clear remaining pegs during the celebration sequence
             std::vector<int> rest;
             for (int i = 0; i < static_cast<int>(m_pegs.size()); ++i)
                 if (!m_pegs[i].removed && !m_pegs[i].hit) rest.push_back(i);
@@ -1617,7 +1727,7 @@ void Game::UpdateBall(float dt)
         }
     }
 
-    // Anti-Stuck Check
+    // Anti-Stuck Detection: Automatically frees the ball if trapped bouncing indefinitely in a tight cluster
     const float sDx = m_ball.x - m_game.stuckCheckX;
     const float sDy = m_ball.y - m_game.stuckCheckY;
     constexpr float STUCK_RADIUS = 12.0f;
@@ -1689,12 +1799,14 @@ void Game::UpdateBall(float dt)
     }
 }
 
+// Finalizes scoring for the completed shot, relocates the purple peg, and prepares the next ball
 void Game::FinishShot()
 {
     const ShotStats& shot = m_game.shot;
     const long long pegTotal = static_cast<long long>(shot.pegScoreSum) * shot.pegsHit;
     const long long shotScore = pegTotal + shot.stylePoints;
 
+    // In Extreme Fever, transition into the jackpot finale tally
     if (m_game.feverActive)
     {
         Finale& fin = m_game.finale;
@@ -1712,6 +1824,7 @@ void Game::FinishShot()
         return;
     }
 
+    // Build the turn-end scorecard popup
     m_popup.lines.clear();
     m_popup.lines.push_back({ FormatNumber(shot.pegScoreSum) + " X " + std::to_string(shot.pegsHit) + " PEGS", 3.0f, COL_YELLOW });
     m_popup.lines.push_back({ FormatNumber(pegTotal), 5.0f, COL_WHITE });
@@ -1732,6 +1845,7 @@ void Game::FinishShot()
 
     if (!m_game.freeBall) m_game.bucketStreak = 0;
 
+    // Trigger 50/50 Coin Flip if the shot completely missed all pegs and the bucket
     const bool fullMiss = (shot.pegsHit == 0 && !m_game.freeBall && !m_game.feverActive);
     if (fullMiss)
     {
@@ -1747,7 +1861,7 @@ void Game::FinishShot()
     }
     m_game.shotInProgress = false;
 
-    // Load next ball straight up out of reserve chute into cannon
+    // Auto-load the next ball into the cannon
     if (!m_game.feverActive && !fullMiss && m_game.ballsLeft > 0)
     {
         if (m_game.droppingBalls.empty())
@@ -1758,6 +1872,7 @@ void Game::FinishShot()
     }
 }
 
+// Polls and processes all user inputs (mouse, keyboard, window events)
 void Game::HandleEvents()
 {
     SDL_Event e;
@@ -1780,12 +1895,12 @@ void Game::HandleEvents()
         case SDL_EVENT_KEY_DOWN:
             if (e.key.key == SDLK_ESCAPE)
             {
-                if (m_runPromptOpen) m_runPromptOpen = false;
-                else if (m_styleShotsOpen) m_styleShotsOpen = false;
-                else if (m_settingsOpen) m_settingsOpen = false;
-                else if (m_levelSelectOpen) m_levelSelectOpen = false;
+                if (m_runPromptOpen)         m_runPromptOpen = false;
+                else if (m_styleShotsOpen)   m_styleShotsOpen = false;
+                else if (m_settingsOpen)     m_settingsOpen = false;
+                else if (m_levelSelectOpen)  m_levelSelectOpen = false;
                 else if (m_screen == Screen::Playing) m_screen = Screen::Paused;
-                else if (m_screen == Screen::Paused) m_screen = Screen::Playing;
+                else if (m_screen == Screen::Paused)  m_screen = Screen::Playing;
             }
             else if (m_screen == Screen::LevelClear && !m_levelSelectOpen && !m_settingsOpen && !m_styleShotsOpen)
             {
@@ -1793,10 +1908,11 @@ void Game::HandleEvents()
 
                 if (e.key.key == SDLK_TAB && isLevel10Run)
                 {
-                    m_activeNameTarget = (m_activeNameTarget == 0) ? 1 : 0;
+                    m_activeNameTarget = (m_activeNameTarget == 0) ? 1 : 0; // Toggle editing level score vs 10-run score
                 }
                 else
                 {
+                    // 3-letter high-score text entry
                     std::string& targetStr = (m_activeNameTarget == 0 || !isLevel10Run) ? m_nameInput : m_chalNameInput;
                     const bool isSaved = (m_activeNameTarget == 0 || !isLevel10Run) ? m_scoreSaved : m_chalScoreSaved;
 
@@ -1852,6 +1968,7 @@ void Game::HandleEvents()
             m_mouseX = e.button.x;
             m_mouseY = e.button.y;
 
+            // Modal dialog click routing
             if (m_runPromptOpen)
             {
                 for (const Button& b : GetRunPromptButtons())
@@ -1915,8 +2032,10 @@ void Game::HandleEvents()
                 break;
             }
 
+            // Gameplay firing and mode toggle interactions
             if (m_screen == Screen::Playing)
             {
+                // Level 1: Click challenge tag to toggle between No Fail and No Reload modes
                 if (m_currentLevel == 1 && m_activeRun.active)
                 {
                     const float margin = 8.0f;
@@ -1938,6 +2057,7 @@ void Game::HandleEvents()
                     }
                 }
 
+                // Fire cannon
                 if (!m_ball.active && m_hitOrder.empty() &&
                     m_game.launcherLoaded && !m_game.levelComplete && !m_game.feverActive &&
                     !m_game.roulette.active && !m_game.ballLoadAnim.active)
@@ -1965,6 +2085,7 @@ void Game::HandleEvents()
                 }
             }
 
+            // High-score row selection toggle on Level 10 clear screen
             if (m_screen == Screen::LevelClear && m_activeRun.active && m_currentLevel == LevelCount())
             {
                 const SDL_FRect row0 = { LAUNCHER_X - 150.0f, 180.0f, 300.0f, 18.0f };
@@ -1973,6 +2094,7 @@ void Game::HandleEvents()
                 if (PointInRect(m_mouseX, m_mouseY, row1)) m_activeNameTarget = 1;
             }
 
+            // General screen button clicks
             if (m_screen != Screen::Playing)
             {
                 const std::vector<Button> buttons = GetScreenButtons(
@@ -1993,11 +2115,14 @@ void Game::HandleEvents()
     }
 }
 
+// Core simulation update (fixed physics substepping, timers, particle animations, state transitions)
 void Game::Update(float frameDt)
 {
+    // Countdown for import notification banner
     if (m_importStatusTimer > 0.0f)
         m_importStatusTimer -= frameDt;
 
+    // Drain queued imports from the file dialog callback thread
     std::vector<std::string> toImport;
     std::string queuedStatus;
     {
@@ -2043,19 +2168,23 @@ void Game::Update(float frameDt)
         m_importStatusTimer = 2.5f;
     }
 
+    // Stop simulation if in main menu
     if (m_screen == Screen::MainMenu) return;
 
     if (m_game.shot.freeBallFlash > 0.0f)
         m_game.shot.freeBallFlash -= frameDt;
 
+    // Update floating score texts
     for (FloatingText& f : m_game.floaters) f.timer -= frameDt;
     m_game.floaters.erase(std::remove_if(m_game.floaters.begin(), m_game.floaters.end(),
         [](const FloatingText& f) { return f.timer <= 0.0f; }), m_game.floaters.end());
 
+    // Update cash-in popup indicators
     for (BallBonusPopup& b : m_game.ballBonusPopups) b.timer -= frameDt;
     m_game.ballBonusPopups.erase(std::remove_if(m_game.ballBonusPopups.begin(), m_game.ballBonusPopups.end(),
         [](const BallBonusPopup& b) { return b.timer <= 0.0f; }), m_game.ballBonusPopups.end());
 
+    // Ball reload animation (quadratic upward easing)
     if (m_game.ballLoadAnim.active)
     {
         BallLoadAnim& anim = m_game.ballLoadAnim;
@@ -2073,6 +2202,7 @@ void Game::Update(float frameDt)
         }
     }
 
+    // Particle physics integration
     for (auto& fx : m_game.pegPops)
     {
         fx.timer += frameDt;
@@ -2080,12 +2210,13 @@ void Game::Update(float frameDt)
         {
             p.x += p.vx * frameDt;
             p.y += p.vy * frameDt;
-            p.vy += 300.0f * frameDt;
+            p.vy += 300.0f * frameDt; // Particle gravity
         }
     }
     m_game.droppingBalls.erase(std::remove_if(m_game.droppingBalls.begin(), m_game.droppingBalls.end(),
         [](const DroppingBall& d) { return d.settled; }), m_game.droppingBalls.end());
 
+    // If waiting for a free ball to finish falling into the chute, load the next ball once it settles
     if (!m_game.shotInProgress && !m_ball.active && m_hitOrder.empty() &&
         !m_game.launcherLoaded && !m_game.ballLoadAnim.active && !m_game.roulette.active &&
         !m_game.feverActive && !m_game.levelComplete && m_game.droppingBalls.empty() &&
@@ -2094,6 +2225,8 @@ void Game::Update(float frameDt)
         StartBallLoadAnim(m_game.freeBall ? 0.2f : 0.0f);
         m_game.freeBall = false;
     }
+
+    // Update free balls dropping down the reserve chute
     for (auto& drop : m_game.droppingBalls)
     {
         const float targetY = GetStackBallY(drop.targetIndex, m_game.ballsLeft);
@@ -2105,7 +2238,7 @@ void Game::Update(float frameDt)
             drop.y = targetY;
             if (drop.bouncesLeft > 0)
             {
-                drop.vy = -drop.vy * 0.25f;
+                drop.vy = -drop.vy * 0.25f; // Small elastic landing bounce
                 drop.bouncesLeft--;
             }
             else
@@ -2117,6 +2250,7 @@ void Game::Update(float frameDt)
     m_game.droppingBalls.erase(std::remove_if(m_game.droppingBalls.begin(), m_game.droppingBalls.end(),
         [](const DroppingBall& d) { return d.settled; }), m_game.droppingBalls.end());
 
+    // Finale: Start leftover ball cash-in after fever score completes count-up
     if (m_game.finale.scoreActive && !m_game.finale.ballsStarted && m_game.finale.shown >= m_game.finale.target)
     {
         m_game.finale.ballsStarted = true;
@@ -2132,6 +2266,7 @@ void Game::Update(float frameDt)
         }
     }
 
+    // Cash in remaining balls sequentially for +10,000 points each
     if (m_game.ballBonusActive)
     {
         const float interval = std::min(BALL_BONUS_MAX_DELAY, BALL_BONUS_TOTAL_TIME / static_cast<float>(m_game.ballBonusLayoutCount));
@@ -2170,6 +2305,7 @@ void Game::Update(float frameDt)
         }
     }
 
+    // Finale: Count fever score upward like an arcade jackpot
     if (m_game.finale.scoreActive)
     {
         Finale& fin = m_game.finale;
@@ -2188,6 +2324,7 @@ void Game::Update(float frameDt)
         }
     }
 
+    // 50/50 Roulette spin timer and outcome resolution
     if (m_game.roulette.active)
     {
         Roulette& rl = m_game.roulette;
@@ -2215,6 +2352,7 @@ void Game::Update(float frameDt)
         }
     }
 
+    // Dynamic camera tracking and zoom management
     if (m_ball.active)
     {
         m_game.camFocusX = m_ball.x;
@@ -2239,6 +2377,7 @@ void Game::Update(float frameDt)
     if (m_game.finale.fireworksActive)
         m_game.finale.fireworksTimer += frameDt;
 
+    // Slow-motion time dilation
     if (m_ball.active)
         m_game.timeScale = (!m_game.feverActive && m_game.approachingLastOrange) ? FEVER_SLOWMO : 1.0f;
     else
@@ -2247,6 +2386,7 @@ void Game::Update(float frameDt)
         m_game.approachingLastOrange = false;
     }
 
+    // Fixed-timestep physics accumulator substepping (240 Hz)
     m_accumulator += frameDt * m_game.timeScale;
     while (m_accumulator >= PHYSICS_STEP)
     {
@@ -2255,6 +2395,7 @@ void Game::Update(float frameDt)
         m_accumulator -= PHYSICS_STEP;
     }
 
+    // Turn-end sequential peg popping sequence
     if (!m_ball.active && !m_hitOrder.empty())
     {
         if (m_removeCount == 0) m_removeCount = static_cast<int>(m_hitOrder.size());
@@ -2277,6 +2418,7 @@ void Game::Update(float frameDt)
         m_removeCount = 0;
     }
 
+    // Conclude turn once ball is gone and all hit pegs have popped
     if (m_game.shotInProgress && !m_ball.active && m_hitOrder.empty()
         && (!m_game.feverActive || m_game.finale.fireworksTimer >= FEVER_FIREWORKS_TIME))
         FinishShot();
@@ -2284,12 +2426,14 @@ void Game::Update(float frameDt)
     if (m_popup.timer > 0.0f)
         m_popup.timer -= frameDt;
 
+    // Victory and Defeat state transitions
     if (m_screen == Screen::Playing && !m_game.shotInProgress && !m_ball.active && m_hitOrder.empty() &&
         m_popup.timer <= 0.0f && !m_game.roulette.active && !m_game.ballBonusActive &&
         m_game.ballBonusPopups.empty() && !m_game.finale.scoreActive && !m_game.ballLoadAnim.active)
     {
         if (m_game.levelComplete)
         {
+            // Level cleared: check if 100% all-pegs award ribbon should appear
             if (m_game.ultraFever && !m_game.ribbonDone)
             {
                 if (!m_game.ribbonActive)
@@ -2306,6 +2450,7 @@ void Game::Update(float frameDt)
         }
         else if (m_game.ballsLeft <= 0 && !m_game.launcherLoaded)
         {
+            // Level failed: handle challenge run flags
             DeleteSavedLevel();
             if (m_activeRun.active)
             {
@@ -2334,6 +2479,7 @@ void Game::Update(float frameDt)
         }
     }
 
+    // Ribbon banner timer countdown
     if (m_game.ribbonActive)
     {
         m_game.ribbonTimer -= frameDt;
@@ -2346,10 +2492,14 @@ void Game::Update(float frameDt)
     }
 }
 
+// Master rendering pass
 void Game::Render()
 {
     SDL_Renderer* renderer = m_renderer.get();
 
+    // =========================================================================
+    // Main Menu Rendering
+    // =========================================================================
     if (m_screen == Screen::MainMenu)
     {
         SDL_SetRenderDrawColor(renderer, 20, 24, 40, 255);
@@ -2363,6 +2513,7 @@ void Game::Render()
         const float hoverY = (m_levelSelectOpen || m_settingsOpen || m_styleShotsOpen || m_runPromptOpen) ? -1.0f : m_mouseY;
         DrawButtons(renderer, GetScreenButtons(m_screen, m_currentLevel, LevelCount(), false, false, m_activeRun, false, ""), hoverX, hoverY);
 
+        // Control instructions
         SDL_SetRenderDrawColor(renderer, COL_WHITE.r, COL_WHITE.g, COL_WHITE.b, 255);
         const float hintScale = 1.8f;
 
@@ -2378,6 +2529,7 @@ void Game::Render()
         DrawBoldText("Press ESC", 65.0f, 524.0f);
         DrawBoldText("To Pause", 65.0f, 552.0f);
 
+        // Leaderboard table
         const float lbCenterX = 365.0f + 405.0f / 2.0f;
         SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
         DrawText(renderer, "LEADERBOARD", lbCenterX - TextWidth("LEADERBOARD", 2.0f) / 2.0f, 120.0f, 2.0f);
@@ -2413,6 +2565,7 @@ void Game::Render()
             const SDL_FRect rowRect = { 365.0f, y - 2.0f, 405.0f, 20.0f };
             const std::vector<ScoreEntry> levelScores = ScoresForLevel(m_scores, item.id);
 
+            // Row hover highlight
             if (!m_levelSelectOpen && !m_settingsOpen && !m_styleShotsOpen && !m_runPromptOpen && PointInRect(m_mouseX, m_mouseY, rowRect))
             {
                 hoveredLevel = item.id;
@@ -2447,6 +2600,7 @@ void Game::Render()
             }
         }
 
+        // Import score status notification banner
         if (m_importStatusTimer > 0.0f && !m_importStatusMsg.empty())
         {
             const SDL_Color statusCol = (m_importStatusMsg == "SCORES IMPORTED!") ? COL_GREEN : COL_RED;
@@ -2455,6 +2609,7 @@ void Game::Render()
             DrawText(renderer, m_importStatusMsg, msgX, 522.0f, 1.5f);
         }
 
+        // Leaderboard detailed high-score hover popup panel
         if (hoveredLevel > 0)
         {
             const std::vector<ScoreEntry> levelScores = ScoresForLevel(m_scores, hoveredLevel);
@@ -2492,6 +2647,7 @@ void Game::Render()
         return;
     }
 
+    // Gameplay and overlay rendering passes
     RenderWorld();
     RenderHUD();
     RenderOverlays();
@@ -2500,6 +2656,7 @@ void Game::Render()
     SDL_RenderPresent(renderer);
 }
 
+// Renders open modal popups (Settings, Level Select, Style Shots, Run Prompts)
 void Game::RenderActivePopups()
 {
     SDL_Renderer* renderer = m_renderer.get();
@@ -2513,6 +2670,7 @@ void Game::RenderActivePopups()
         DrawStyleShots(renderer, m_mouseX, m_mouseY);
 }
 
+// Renders the playfield elements (pegs, launcher, guide, ball, particles, bucket) with dynamic zoom support
 void Game::RenderWorld()
 {
     SDL_Renderer* renderer = m_renderer.get();
@@ -2522,13 +2680,15 @@ void Game::RenderWorld()
     SDL_SetRenderDrawColor(renderer, 20, 24, 40, 255);
     SDL_RenderClear(renderer);
 
+    // Draw all active pegs
     for (const Peg& peg : m_pegs)
     {
         if (peg.removed) continue;
-        Uint8 r = 50, g = 110, b = 220;
+        Uint8 r = 50, g = 110, b = 220; // Default Blue Peg
         if (peg.type == PegType::Orange) { r = 240; g = 130; b = 40; }
-        else if (peg.type == PegType::Purple) { r = 190; g = 60; b = 200; }
+        else if (peg.type == PegType::Purple) { r = 190; g = 60;  b = 200; }
 
+        // Lighten peg color when marked as hit
         if (peg.hit)
         {
             r = static_cast<Uint8>((r + 255) / 2);
@@ -2539,6 +2699,7 @@ void Game::RenderWorld()
         DrawFilledCircle(renderer, peg.x, peg.y, PEG_RADIUS);
     }
 
+    // Draw bottom bucket or extreme fever dividers
     if (m_game.feverActive)
     {
         SDL_SetRenderDrawColor(renderer, 230, 190, 60, 255);
@@ -2558,9 +2719,11 @@ void Game::RenderWorld()
         m_bucket.Render(renderer);
     }
 
+    // Draw Launcher Turret
     SDL_SetRenderDrawColor(renderer, 200, 200, 210, 255);
     DrawFilledCircle(renderer, LAUNCHER_X, LAUNCHER_Y, 14.0f);
 
+    // Draw Trajectory Aiming Guide
     if (!m_ball.active && m_hitOrder.empty() &&
         m_game.launcherLoaded && !m_game.levelComplete && !m_game.feverActive &&
         !m_game.roulette.active && !m_game.ballLoadAnim.active)
@@ -2575,13 +2738,14 @@ void Game::RenderWorld()
         DrawFilledCircle(renderer, loadedX, loadedY, BALL_RADIUS);
     }
 
+    // Draw Active Ball
     if (m_ball.active)
     {
         SDL_SetRenderDrawColor(renderer, 230, 230, 240, 255);
         DrawFilledCircle(renderer, m_ball.x, m_ball.y, BALL_RADIUS);
     }
 
-    // Peg Pop Effects
+    // Draw Expanding Ring and Flying Particles for Peg Pops
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     for (const auto& fx : m_game.pegPops)
     {
@@ -2602,7 +2766,7 @@ void Game::RenderWorld()
     }
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 
-    // Floating Texts
+    // Draw Floating Score & Style Text
     for (const FloatingText& f : m_game.floaters)
     {
         if (!f.isStyle)
@@ -2630,6 +2794,7 @@ void Game::RenderWorld()
         }
     }
 
+    // Resolve zoom viewport onto default backbuffer
     if (zoomed)
     {
         SDL_SetRenderTarget(renderer, nullptr);
@@ -2656,11 +2821,12 @@ void Game::RenderWorld()
     }
 }
 
+// Renders borders, score displays, ball chute stack, and fever multiplier meter
 void Game::RenderHUD()
 {
     SDL_Renderer* renderer = m_renderer.get();
 
-    // Black borders
+    // Black outer letterbox borders
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     const SDL_FRect borders[4] = {
         { 0.0f,        0.0f,        static_cast<float>(WINDOW_W), BORDER_TOP },
@@ -2670,7 +2836,7 @@ void Game::RenderHUD()
     };
     SDL_RenderFillRects(renderer, borders, 4);
 
-    // Top HUD
+    // Top Header: Level Indicator & Mode Tag
     const float margin = 8.0f;
     const float boxY = 8.0f;
     const float boxH = 34.0f;
@@ -2693,11 +2859,11 @@ void Game::RenderHUD()
 
     const bool isHovered = (m_currentLevel == 1 && m_activeRun.active && PointInRect(m_mouseX, m_mouseY, levelBox));
     if (isHovered) SDL_SetRenderDrawColor(renderer, 65, 90, 150, 255);
-    else SDL_SetRenderDrawColor(renderer, 45, 60, 100, 255);
+    else           SDL_SetRenderDrawColor(renderer, 45, 60, 100, 255);
     SDL_RenderFillRect(renderer, &levelBox);
 
     if (isHovered) SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
-    else SDL_SetRenderDrawColor(renderer, 200, 200, 210, 255);
+    else           SDL_SetRenderDrawColor(renderer, 200, 200, 210, 255);
     SDL_RenderRect(renderer, &levelBox);
 
     if (!modeText.empty())
@@ -2720,6 +2886,7 @@ void Game::RenderHUD()
         DrawText(renderer, hint, levelBox.x + levelBox.w + 14.0f, boxY + (boxH - 8.0f) / 2.0f, 1.0f);
     }
 
+    // Top Header: Score Box
     const SDL_FRect scoreBox = { WINDOW_W - margin - scoreW, boxY, scoreW, boxH };
     SDL_SetRenderDrawColor(renderer, 45, 60, 100, 255);
     SDL_RenderFillRect(renderer, &scoreBox);
@@ -2728,6 +2895,7 @@ void Game::RenderHUD()
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     DrawText(renderer, scoreText, scoreBox.x + (scoreBox.w - TextWidth(scoreText, 2.0f)) / 2.0f, scoreBox.y + (scoreBox.h - 16.0f) / 2.0f, 2.0f);
 
+    // Top Header: 10-Run Grand Total Score
     if (m_activeRun.active && m_activeRun.completedCount > 0)
     {
         const long long total = m_activeRun.CompletedTotal() + m_game.score;
@@ -2746,7 +2914,7 @@ void Game::RenderHUD()
         DrawText(renderer, totalText, totalBox.x + (totalBox.w - TextWidth(totalText, 1.5f)) / 2.0f, totalBox.y + (totalBox.h - 12.0f) / 2.0f, 1.5f);
     }
 
-    // Left Border Ball Stack
+    // Left Border: Free Ball Threshold Meter Bars
     const ShotStats& shot = m_game.shot;
     const SDL_Color stageColours[FREE_BALL_THRESHOLD_COUNT] = {
         { 60, 200, 80, 255 }, { 175, 70, 215, 255 }, { 250, 210, 50, 255 }
@@ -2796,17 +2964,19 @@ void Game::RenderHUD()
         SDL_RenderRect(renderer, &back);
     }
 
+    // Free Ball Indicator Circle
     SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, 255);
     DrawFilledCircle(renderer, cx, cy, circleR);
     if (lit) SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, 255);
-    else SDL_SetRenderDrawColor(renderer, 30, 33, 46, 255);
+    else     SDL_SetRenderDrawColor(renderer, 30, 33, 46, 255);
     DrawFilledCircle(renderer, cx, cy, circleR - 3.0f);
 
     if (lit) SDL_SetRenderDrawColor(renderer, 15, 15, 20, 255);
-    else SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    else     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     DrawText(renderer, "FREE", cx - TextWidth("FREE", 1.0f) / 2.0f, cy - 9.0f, 1.0f);
     DrawText(renderer, "BALL", cx - TextWidth("BALL", 1.0f) / 2.0f, cy + 1.0f, 1.0f);
 
+    // Left Border: Ball Chute Stack
     const int reserveBalls = m_game.ballBonusActive ? m_game.ballBonusShown : m_game.ballsLeft;
     const int layoutN = m_game.ballBonusActive ? m_game.ballBonusLayoutCount : std::max(STARTING_BALLS, m_game.ballsLeft);
     const float firstY = cy - circleR - 4.0f - STACK_BALL_RADIUS;
@@ -2828,14 +2998,14 @@ void Game::RenderHUD()
     for (const auto& drop : m_game.droppingBalls)
         DrawFilledCircle(renderer, cx, drop.y, STACK_BALL_RADIUS);
 
-    // Ball being launched straight up out the chute
+    // Ball being launched straight up out of the reserve tube
     if (m_game.ballLoadAnim.active)
     {
         SDL_SetRenderDrawColor(renderer, 235, 235, 245, 255);
         DrawFilledCircle(renderer, m_game.ballLoadAnim.curX, m_game.ballLoadAnim.curY, STACK_BALL_RADIUS);
     }
 
-    // +10,000 bonus popup indicator when balls are cashed in
+    // Cash-in indicator popups
     const std::string bonusText = "+" + FormatNumber(UNUSED_BALL_POINTS);
     for (const BallBonusPopup& b : m_game.ballBonusPopups)
     {
@@ -2843,7 +3013,7 @@ void Game::RenderHUD()
         DrawOutlinedText(renderer, bonusText, PLAY_LEFT + 6.0f, firstY - b.index * pitch - 4.0f * scale, scale, COL_YELLOW);
     }
 
-    // Right Border Fever Meter
+    // Right Border: Orange Peg Fever Multiplier Meter
     const int segPitch = METER_SEGMENT_HEIGHT + METER_SEGMENT_GAP;
     const float meterBottom = PLAY_BOTTOM - 10.0f;
     const float meterX = PLAY_RIGHT + 4.0f;
@@ -2851,7 +3021,7 @@ void Game::RenderHUD()
     {
         const float segY = meterBottom - k * segPitch;
         if (k <= m_game.orangeHit) SDL_SetRenderDrawColor(renderer, 255, 150, 30, 255);
-        else SDL_SetRenderDrawColor(renderer, 85, 42, 14, 255);
+        else                      SDL_SetRenderDrawColor(renderer, 85, 42, 14, 255);
         const SDL_FRect seg = { meterX, segY, 16.0f, static_cast<float>(METER_SEGMENT_HEIGHT) };
         SDL_RenderFillRect(renderer, &seg);
     }
@@ -2860,15 +3030,17 @@ void Game::RenderHUD()
     {
         const float segY = meterBottom - m.hits * segPitch;
         if (m_game.orangeHit >= m.hits) SDL_SetRenderDrawColor(renderer, 255, 220, 120, 255);
-        else SDL_SetRenderDrawColor(renderer, 150, 150, 160, 255);
+        else                            SDL_SetRenderDrawColor(renderer, 150, 150, 160, 255);
         DrawText(renderer, m.label, meterX + 19.0f, segY + 4.0f, 1.0f);
     }
 }
 
+// Renders centered turn score summaries, Extreme Fever headlines, and 50/50 Roulette graphics
 void Game::RenderOverlays()
 {
     SDL_Renderer* renderer = m_renderer.get();
 
+    // Turn Score Summary Popup
     if (m_popup.timer > 0.0f && !m_popup.lines.empty())
     {
         const float gap = 10.0f;
@@ -2887,6 +3059,7 @@ void Game::RenderOverlays()
         }
     }
 
+    // Extreme Fever Headline Banner
     if (m_game.feverZoomOut)
     {
         const float u = std::max(0.0f, std::min(1.0f, m_game.feverZoomTimer / EXTREME_FEVER_ZOOM_OUT_TIME));
@@ -2900,6 +3073,7 @@ void Game::RenderOverlays()
         DrawOutlinedText(renderer, text, LAUNCHER_X - TextWidth(text, scale) / 2.0f, y, scale, COL_ORANGE, static_cast<Uint8>(255.0f * fade));
     }
 
+    // Fever Score Jackpot Tally
     if (m_game.finale.scoreActive)
     {
         const Finale& fin = m_game.finale;
@@ -2919,6 +3093,7 @@ void Game::RenderOverlays()
         DrawOutlinedText(renderer, number, LAUNCHER_X - TextWidth(number, numberScale) / 2.0f, top + 8.0f * titleScale + 16.0f, numberScale, { 255, 170, 30, 255 }, alpha);
     }
 
+    // 50/50 Roulette Meter & Result
     if (m_game.roulette.active)
     {
         const float t = m_game.roulette.timer;
@@ -2973,6 +3148,7 @@ void Game::RenderOverlays()
         }
     }
 
+    // Ultra Extreme Fever 100% All-Pegs Badge Presentation
     if (m_game.ribbonActive)
     {
         DrawDim(renderer, 190);
@@ -2994,6 +3170,7 @@ void Game::RenderOverlays()
         DrawText(renderer, banner, LAUNCHER_X - TextWidth(banner, 2.0f) / 2.0f, ribbonRect.y + rh + 15.0f, 2.0f);
     }
 
+    // Modal Panels: Paused, Level Clear, and Fail Screens
     if (m_screen == Screen::Paused || m_screen == Screen::Fail || m_screen == Screen::LevelClear)
     {
         const bool hoverOn = !m_levelSelectOpen && !m_settingsOpen && !m_styleShotsOpen && !m_runPromptOpen;
@@ -3018,6 +3195,7 @@ void Game::RenderOverlays()
         }
         else
         {
+            // Level Cleared Modal
             const std::string title = "LEVEL CLEARED";
             SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
             DrawText(renderer, title, LAUNCHER_X - TextWidth(title, 3.0f) / 2.0f, 92.0f, 3.0f);
