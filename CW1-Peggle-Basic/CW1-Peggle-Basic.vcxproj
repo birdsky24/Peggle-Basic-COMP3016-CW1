@@ -20,22 +20,30 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Audio.cpp" />
+    <ClCompile Include="Bucket.cpp" />
+    <ClCompile Include="Game.cpp" />
     <ClCompile Include="Leaderboard.cpp" />
     <ClCompile Include="Level.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Audio.h" />
+    <ClInclude Include="Bucket.h" />
     <ClInclude Include="Config.h" />
+    <ClInclude Include="Game.h" />
     <ClInclude Include="Leaderboard.h" />
     <ClInclude Include="Level.h" />
     <ClInclude Include="Peg.h" />
+    <ClInclude Include="SDLWrappers.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="leaderboard.dat" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="resource.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="CMakeLists.txt" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
