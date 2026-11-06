@@ -6,7 +6,7 @@
 #include <cmath>
 #include <fstream>
 
-    namespace
+namespace
 {
     // =========================================================================
     // Color Palette Constants
@@ -164,6 +164,38 @@
                     b.rect.x + (b.rect.w - TextWidth(b.label, scale)) / 2.0f,
                     b.rect.y + (b.rect.h - 8.0f * scale) / 2.0f, scale);
             }
+        }
+    }
+
+    // Draws the 10-score leaderboard hover popup window
+    void DrawLeaderboardHoverPanel(SDL_Renderer* r, int levelId, const std::string& title, float panelX, float mouseY, const std::vector<ScoreEntry>& scores, SDL_Texture* ribbonTex)
+    {
+        const std::vector<ScoreEntry> levelScores = ScoresForLevel(scores, levelId);
+        if (levelScores.empty()) return;
+
+        const float h = 44.0f + levelScores.size() * 22.0f;
+        const SDL_FRect panel = { panelX, std::max(60.0f, std::min(mouseY - 20.0f, WINDOW_H - 10.0f - h)), 405.0f, h };
+        DrawPanel(r, panel);
+
+        SDL_SetRenderDrawColor(r, 255, 220, 80, 255);
+        DrawText(r, title + " BEST SCORES", panel.x + 10.0f, panel.y + 10.0f, 1.8f);
+        for (size_t i = 0; i < levelScores.size(); ++i)
+        {
+            const float y = panel.y + 36.0f + i * 22.0f;
+            const std::string scoreText = FormatNumber(levelScores[i].score);
+            const float scoreX = panel.x + panel.w - 10.0f - TextWidth(scoreText, 1.5f);
+
+            if (levelScores[i].isUltra && ribbonTex)
+            {
+                const SDL_FRect miniRibbon = { scoreX - 16.0f, y - 1.0f, 12.0f, 18.0f };
+                SDL_RenderTexture(r, ribbonTex, nullptr, &miniRibbon);
+            }
+
+            SDL_SetRenderDrawColor(r, 160, 160, 170, 255);
+            DrawText(r, std::to_string(i + 1) + ".", panel.x + 10.0f, y, 1.5f);
+            SDL_SetRenderDrawColor(r, 255, 255, 255, 255);
+            DrawText(r, levelScores[i].name, panel.x + 60.0f, y, 1.5f);
+            DrawText(r, scoreText, scoreX, y, 1.5f);
         }
     }
 
@@ -389,9 +421,9 @@
         else if (screen == Screen::Paused)
         {
             const float x = LAUNCHER_X - 150.0f;
-            float y = 206.0f;
             const float btnH = 36.0f;
             const float btnStep = 44.0f;
+            float y = activeRun.active ? 222.0f : 210.0f;
             buttons.push_back({ { x, y, 300.0f, btnH }, "RESUME", "", Action::Resume, 0 }); y += btnStep;
 
             // In No Reload mode past level 1, restarting the level is disabled
@@ -802,13 +834,13 @@ void Game::CheckFreeBalls()
 }
 
 // Thread-safe queues populated by the native file dialog callback
-void Game::QueueImports(const std::vector<std::string>& paths)
+void Game::QueueImports(const std::vector<std::string>&paths)
 {
     std::lock_guard<std::mutex> lock(m_importMutex);
     m_pendingImports.insert(m_pendingImports.end(), paths.begin(), paths.end());
 }
 
-void Game::QueueImportStatus(const std::string& msg)
+void Game::QueueImportStatus(const std::string & msg)
 {
     std::lock_guard<std::mutex> lock(m_importMutex);
     m_pendingStatus = msg;
@@ -848,7 +880,7 @@ void Game::ImportScoresDialog()
 }
 
 // Spawns score text above an impacted peg
-void Game::AddPegPopup(const Peg& peg, int points)
+void Game::AddPegPopup(const Peg & peg, int points)
 {
     FloatingText f;
     f.text = FormatNumber(points);
@@ -885,7 +917,7 @@ void Game::AddStyle(const char* name, int points, float x, float y)
 }
 
 // Spawns burst particles when a peg is removed
-void Game::SpawnPegPop(const Peg& peg)
+void Game::SpawnPegPop(const Peg & peg)
 {
     PegPopEffect fx;
     fx.x = peg.x;
@@ -1181,7 +1213,7 @@ void Game::SaveChallengeScore()
 }
 
 // UI action dispatch table
-void Game::DoAction(const Button& b)
+void Game::DoAction(const Button & b)
 {
     if (b.action != Action::None) PlaySfx(Sfx::ButtonClick);
     switch (b.action)
@@ -1351,7 +1383,7 @@ void Game::DoAction(const Button& b)
 }
 
 // Performs collision detection and elastic response between the ball and a triangle (the bucket rims)
-bool Game::BounceOffTriangle(const Triangle& tri)
+bool Game::BounceOffTriangle(const Triangle & tri)
 {
     float bestX = 0.0f, bestY = 0.0f;
     float bestDistSq = 1.0e30f;
@@ -2612,34 +2644,7 @@ void Game::Render()
         // Leaderboard detailed high-score hover popup panel
         if (hoveredLevel > 0)
         {
-            const std::vector<ScoreEntry> levelScores = ScoresForLevel(m_scores, hoveredLevel);
-            if (!levelScores.empty())
-            {
-                const float h = 44.0f + levelScores.size() * 22.0f;
-                const SDL_FRect panel = { 365.0f, std::max(60.0f, std::min(m_mouseY - 20.0f, WINDOW_H - 10.0f - h)), 405.0f, h };
-                DrawPanel(renderer, panel);
-
-                SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
-                DrawText(renderer, hoveredTitle + " BEST SCORES", panel.x + 10.0f, panel.y + 10.0f, 1.8f);
-                for (size_t i = 0; i < levelScores.size(); ++i)
-                {
-                    const float y = panel.y + 36.0f + i * 22.0f;
-                    const std::string scoreText = FormatNumber(levelScores[i].score);
-                    const float scoreX = panel.x + panel.w - 10.0f - TextWidth(scoreText, 1.5f);
-
-                    if (levelScores[i].isUltra && m_ribbonTex)
-                    {
-                        const SDL_FRect miniRibbon = { scoreX - 16.0f, y - 1.0f, 12.0f, 18.0f };
-                        SDL_RenderTexture(renderer, m_ribbonTex.get(), nullptr, &miniRibbon);
-                    }
-
-                    SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
-                    DrawText(renderer, std::to_string(i + 1) + ".", panel.x + 10.0f, y, 1.5f);
-                    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-                    DrawText(renderer, levelScores[i].name, panel.x + 60.0f, y, 1.5f);
-                    DrawText(renderer, scoreText, scoreX, y, 1.5f);
-                }
-            }
+            DrawLeaderboardHoverPanel(renderer, hoveredLevel, hoveredTitle, 365.0f, m_mouseY, m_scores, m_ribbonTex.get());
         }
 
         RenderActivePopups();
@@ -3175,15 +3180,91 @@ void Game::RenderOverlays()
     {
         const bool hoverOn = !m_levelSelectOpen && !m_settingsOpen && !m_styleShotsOpen && !m_runPromptOpen;
         DrawDim(renderer, 170);
-        DrawPanel(renderer, { LAUNCHER_X - 210.0f, 80.0f, 420.0f, 435.0f });
+
+        const SDL_FRect modalPanel = (m_screen == Screen::Paused) ?
+            SDL_FRect{ LAUNCHER_X - 210.0f, 70.0f, 420.0f, 475.0f } :
+            SDL_FRect{ LAUNCHER_X - 210.0f, 80.0f, 420.0f, 435.0f };
+        DrawPanel(renderer, modalPanel);
 
         const std::string scoreLine = "SCORE " + FormatNumber(m_game.score);
+        int pausedHoveredLevel = 0;
+        std::string pausedHoveredTitle = "";
+
         if (m_screen == Screen::Paused)
         {
             const std::string title = "PAUSED";
             SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-            DrawText(renderer, title, LAUNCHER_X - TextWidth(title, 5.0f) / 2.0f, 115.0f, 5.0f);
-            DrawText(renderer, scoreLine, LAUNCHER_X - TextWidth(scoreLine, 2.0f) / 2.0f, 175.0f, 2.0f);
+            DrawText(renderer, title, LAUNCHER_X - TextWidth(title, 5.0f) / 2.0f, 95.0f, 5.0f);
+            DrawText(renderer, scoreLine, LAUNCHER_X - TextWidth(scoreLine, 2.0f) / 2.0f, 142.0f, 2.0f);
+
+            struct PauseLbRow {
+                int id;
+                std::string label;
+                bool isChallenge;
+                float y;
+            };
+
+            std::vector<PauseLbRow> pauseRows;
+            if (m_activeRun.active)
+            {
+                int chalId = CHALLENGE_10_REGULAR;
+                std::string chalLabel = "10 LEVELS";
+                if (m_activeRun.noReload)
+                {
+                    chalId = CHALLENGE_10_NO_RELOAD;
+                    chalLabel = "10 LVL NO RELOAD";
+                }
+                else if (m_activeRun.noFail)
+                {
+                    chalId = CHALLENGE_10_NO_FAIL;
+                    chalLabel = "10 LVL NO FAIL";
+                }
+                pauseRows.push_back({ chalId, chalLabel, true, 168.0f });
+                pauseRows.push_back({ m_currentLevel, "LEVEL " + std::to_string(m_currentLevel), false, 192.0f });
+            }
+            else
+            {
+                pauseRows.push_back({ m_currentLevel, "LEVEL " + std::to_string(m_currentLevel), false, 175.0f });
+            }
+
+            for (const auto& item : pauseRows)
+            {
+                const SDL_FRect rowRect = { 200.0f, item.y - 2.0f, 400.0f, 20.0f };
+                const std::vector<ScoreEntry> levelScores = ScoresForLevel(m_scores, item.id);
+
+                if (hoverOn && PointInRect(m_mouseX, m_mouseY, rowRect))
+                {
+                    pausedHoveredLevel = item.id;
+                    pausedHoveredTitle = item.label;
+                    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+                    SDL_SetRenderDrawColor(renderer, 80, 110, 170, 120);
+                    SDL_RenderFillRect(renderer, &rowRect);
+                    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+                }
+
+                if (item.isChallenge) SDL_SetRenderDrawColor(renderer, 255, 200, 70, 255);
+                else                  SDL_SetRenderDrawColor(renderer, 160, 160, 170, 255);
+                DrawText(renderer, item.label, 205.0f, item.y, 1.5f);
+
+                if (levelScores.empty())
+                {
+                    DrawText(renderer, "NO SCORES", 595.0f - TextWidth("NO SCORES", 1.5f), item.y, 1.5f);
+                }
+                else
+                {
+                    const std::string scoreText = FormatNumber(levelScores[0].score);
+                    const float scoreX = 595.0f - TextWidth(scoreText, 1.5f);
+
+                    if (levelScores[0].isUltra && m_ribbonTex)
+                    {
+                        const SDL_FRect miniRibbon = { scoreX - 16.0f, item.y - 1.0f, 12.0f, 18.0f };
+                        SDL_RenderTexture(renderer, m_ribbonTex.get(), nullptr, &miniRibbon);
+                    }
+                    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                    DrawText(renderer, levelScores[0].name, 425.0f, item.y, 1.5f);
+                    DrawText(renderer, scoreText, scoreX, item.y, 1.5f);
+                }
+            }
         }
         else if (m_screen == Screen::Fail)
         {
@@ -3258,5 +3339,10 @@ void Game::RenderOverlays()
         DrawButtons(renderer,
             GetScreenButtons(m_screen, m_currentLevel, LevelCount(), m_nameInput.size() == 3, m_scoreSaved, m_activeRun, m_chalScoreSaved, m_chalNameInput),
             hoverOn ? m_mouseX : -1.0f, hoverOn ? m_mouseY : -1.0f);
+
+        if (pausedHoveredLevel > 0)
+        {
+            DrawLeaderboardHoverPanel(renderer, pausedHoveredLevel, pausedHoveredTitle, LAUNCHER_X - 202.5f, m_mouseY, m_scores, m_ribbonTex.get());
+        }
     }
 }
