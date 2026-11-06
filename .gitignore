@@ -1,8 +1,36 @@
+# Visual Studio temporary files, user files & caches
 .vs/
+*.user
+*.ipch
+*.VC.db
+*.opendb
+
+# Build output directories (MSVC & CMake)
+[Bb]in/
+[Oo]bj/
+[Bb]uild/
+out/
 x64/
 x86/
-Debug/
-Release/
-*.user
+ARM/
+ARM64/
+[Dd]ebug/
+[Rr]elease/
+
+# CMake temporary files (if building via CMake)
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# Executables, libraries & debug symbols
+*.exe
+*.pdb
+*.ilk
+*.obj
 *.log
-*.ipch
+*.tlog
+
+# Local game runtime saves (prevents playtests from dirtying git status)
+run.dat
+level_state.dat
+settings.cfg
